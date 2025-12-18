@@ -1,15 +1,14 @@
 # Parser Test Repositories
 
-This directory contains test repositories for validating the bot-go parser across different programming languages. Each repository implements a calculator application using language-specific idioms and syntax patterns.
+This directory contains test repositories for validating the codeapi parser across different programming languages. Each repository implements a calculator application using language-specific idioms and syntax patterns.
 
 ## Quick Start
 
 ```bash
-# From the project root directory
-./run_test.sh <repo-name> --build-index    # Build code graph
-./run_test.sh <repo-name> --test-dump      # Dump graph for inspection
-./run_test.sh <repo-name> --clean          # Clean up DB entries
-./run_test.sh <repo-name> --all            # Run all operations
+# From the tests directory
+./run_tests.sh                    # Build index for all test repos
+./run_tests.sh python-calculator  # Build index for specific repo
+./run_tests.sh --list             # List available test repos
 ```
 
 ## Test Repositories
@@ -207,25 +206,25 @@ This repository implements the same functionality as `java-modern-calculator` bu
 
 ## Configuration
 
-The test repositories are configured in `tests/source.yaml`:
+The test repositories are configured in `tests/source.yaml`. The paths use the `${CODEAPI_TEST_DIR}` environment variable which is automatically set by the test script:
 
 ```yaml
 source:
   repositories:
     - name: python-calculator
-      path: /Users/anindya/src/armchr/bot-go/tests/repos/python-calculator
+      path: ${CODEAPI_TEST_DIR}/repos/python-calculator
       language: python
     - name: go-calculator
-      path: /Users/anindya/src/armchr/bot-go/tests/repos/go-calculator
+      path: ${CODEAPI_TEST_DIR}/repos/go-calculator
       language: go
     - name: typescript-calculator
-      path: /Users/anindya/src/armchr/bot-go/tests/repos/typescript-calculator
+      path: ${CODEAPI_TEST_DIR}/repos/typescript-calculator
       language: typescript
     - name: java-modern-calculator
-      path: /Users/anindya/src/armchr/bot-go/tests/repos/java-modern-calculator
+      path: ${CODEAPI_TEST_DIR}/repos/java-modern-calculator
       language: java
     - name: java8-calculator
-      path: /Users/anindya/src/armchr/bot-go/tests/repos/java8-calculator
+      path: ${CODEAPI_TEST_DIR}/repos/java8-calculator
       language: java
 ```
 
@@ -235,16 +234,14 @@ To add a new test repository:
 
 1. Create the repository structure in `tests/repos/<name>/`
 2. Add the repository to `tests/source.yaml`
-3. Update the `AVAILABLE_REPOS` array in `run_test.sh`
-4. Document the repository in this README
+3. Document the repository in this README
 
 ## Validating Parser Output
 
-After running `--build-index`, you can inspect the generated code graph:
+After running `./run_tests.sh`, you can inspect the generated code graph:
 
 1. **Neo4j Browser**: Connect to `http://localhost:7474` and run Cypher queries
-2. **Test Dump**: Use `--test-dump` to output the graph to a file
-3. **API**: Query the REST API endpoints to verify relationships
+2. **API**: Query the REST API endpoints to verify relationships
 
 Example Cypher queries:
 ```cypher
