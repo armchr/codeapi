@@ -248,6 +248,39 @@ make build-index REPO="repo1 repo2 repo3"
 - **Indexing & Search API**: `/api/v1/`
 - **Code Analysis API**: `/codeapi/v1/`
 
+### API Endpoint Summary
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | [`/api/v1/health`](#health-check) | Health check |
+| `POST` | [`/api/v1/buildIndex`](#build-index) | Build repository index |
+| `POST` | [`/api/v1/indexFile`](#index-file) | Index specific files |
+| `POST` | [`/api/v1/searchSimilarCode`](#search-similar-code) | Semantic code search |
+| `POST` | [`/api/v1/functionDependencies`](#get-function-dependencies) | Get function call dependencies |
+| `POST` | [`/api/v1/processDirectory`](#process-directory) | Process directory for embeddings |
+| `GET` | [`/codeapi/v1/repos`](#list-repositories) | List indexed repositories |
+| `POST` | [`/codeapi/v1/files`](#list-files) | List files in repository |
+| `POST` | [`/codeapi/v1/classes`](#list-classes) | List classes |
+| `POST` | [`/codeapi/v1/methods`](#list-methods) | List methods |
+| `POST` | [`/codeapi/v1/functions`](#list-functions) | List functions |
+| `POST` | [`/codeapi/v1/classes/find`](#find-classes-by-pattern) | Find classes by pattern |
+| `POST` | [`/codeapi/v1/methods/find`](#find-methods-by-pattern) | Find methods by pattern |
+| `POST` | [`/codeapi/v1/class`](#get-class) | Get class details |
+| `POST` | [`/codeapi/v1/method`](#get-method) | Get method details |
+| `POST` | [`/codeapi/v1/class/methods`](#get-class-methods) | Get methods of a class |
+| `POST` | [`/codeapi/v1/class/fields`](#get-class-fields) | Get fields of a class |
+| `POST` | [`/codeapi/v1/callgraph`](#get-call-graph) | Get call graph |
+| `POST` | [`/codeapi/v1/callers`](#get-callers) | Get callers of a function |
+| `POST` | [`/codeapi/v1/callees`](#get-callees) | Get callees of a function |
+| `POST` | [`/codeapi/v1/data/dependents`](#get-data-dependents) | Get data dependents |
+| `POST` | [`/codeapi/v1/data/sources`](#get-data-sources) | Get data sources |
+| `POST` | [`/codeapi/v1/impact`](#get-impact-analysis) | Impact analysis |
+| `POST` | [`/codeapi/v1/inheritance`](#get-inheritance-tree) | Get inheritance tree |
+| `POST` | [`/codeapi/v1/field/accessors`](#get-field-accessors) | Get field accessors |
+| `POST` | [`/codeapi/v1/cypher`](#execute-cypher-query-read) | Execute read Cypher query |
+| `POST` | [`/codeapi/v1/cypher/write`](#execute-cypher-query-write) | Execute write Cypher query |
+| `GET` | [`/codeapi/v1/health`](#codeapi-health-check) | CodeAPI health check |
+
 ---
 
 ### Indexing & Search Endpoints
@@ -419,6 +452,35 @@ POST /api/v1/functionDependencies
 
 ---
 
+#### Process Directory
+
+Process a directory and generate embeddings.
+
+```
+POST /api/v1/processDirectory
+```
+
+**Request:**
+```json
+{
+  "repo_name": "my-project",
+  "collection_name": "my-project-embeddings"
+}
+```
+
+**Response:**
+```json
+{
+  "repo_name": "my-project",
+  "collection_name": "my-project-embeddings",
+  "total_chunks": 150,
+  "success": true,
+  "message": "Directory processed successfully"
+}
+```
+
+---
+
 ### Code Analysis API Endpoints
 
 #### List Repositories
@@ -498,6 +560,37 @@ POST /codeapi/v1/classes
 
 ---
 
+#### List Methods
+
+```
+POST /codeapi/v1/methods
+```
+
+**Request:**
+```json
+{
+  "repo_name": "my-project",
+  "class_id": "class-456"
+}
+```
+
+**Response:**
+```json
+{
+  "methods": [
+    {
+      "id": "method-123",
+      "name": "GetUser",
+      "signature": "func (s *UserService) GetUser(id string) (*User, error)",
+      "start_line": 15,
+      "end_line": 25
+    }
+  ]
+}
+```
+
+---
+
 #### List Functions
 
 ```
@@ -543,6 +636,24 @@ POST /codeapi/v1/classes/find
 }
 ```
 
+**Response:**
+```json
+{
+  "classes": [
+    {
+      "id": "class-456",
+      "name": "UserService",
+      "file_path": "src/service/user.go"
+    },
+    {
+      "id": "class-457",
+      "name": "OrderService",
+      "file_path": "src/service/order.go"
+    }
+  ]
+}
+```
+
 ---
 
 #### Find Methods by Pattern
@@ -556,6 +667,153 @@ POST /codeapi/v1/methods/find
 {
   "repo_name": "my-project",
   "pattern": "Get.*"
+}
+```
+
+**Response:**
+```json
+{
+  "methods": [
+    {
+      "id": "method-123",
+      "name": "GetUser",
+      "class_name": "UserService"
+    },
+    {
+      "id": "method-124",
+      "name": "GetOrder",
+      "class_name": "OrderService"
+    }
+  ]
+}
+```
+
+---
+
+#### Get Class
+
+```
+POST /codeapi/v1/class
+```
+
+**Request:**
+```json
+{
+  "repo_name": "my-project",
+  "class_id": "class-456"
+}
+```
+
+**Response:**
+```json
+{
+  "class": {
+    "id": "class-456",
+    "name": "UserService",
+    "file_path": "src/service/user.go",
+    "start_line": 10,
+    "end_line": 100,
+    "methods": [...],
+    "fields": [...]
+  }
+}
+```
+
+---
+
+#### Get Method
+
+```
+POST /codeapi/v1/method
+```
+
+**Request:**
+```json
+{
+  "repo_name": "my-project",
+  "method_id": "method-123"
+}
+```
+
+**Response:**
+```json
+{
+  "method": {
+    "id": "method-123",
+    "name": "GetUser",
+    "signature": "func (s *UserService) GetUser(id string) (*User, error)",
+    "start_line": 15,
+    "end_line": 25,
+    "class_id": "class-456"
+  }
+}
+```
+
+---
+
+#### Get Class Methods
+
+```
+POST /codeapi/v1/class/methods
+```
+
+**Request:**
+```json
+{
+  "repo_name": "my-project",
+  "class_id": "class-456"
+}
+```
+
+**Response:**
+```json
+{
+  "methods": [
+    {
+      "id": "method-123",
+      "name": "GetUser",
+      "signature": "func (s *UserService) GetUser(id string) (*User, error)"
+    },
+    {
+      "id": "method-124",
+      "name": "CreateUser",
+      "signature": "func (s *UserService) CreateUser(user *User) error"
+    }
+  ]
+}
+```
+
+---
+
+#### Get Class Fields
+
+```
+POST /codeapi/v1/class/fields
+```
+
+**Request:**
+```json
+{
+  "repo_name": "my-project",
+  "class_id": "class-456"
+}
+```
+
+**Response:**
+```json
+{
+  "fields": [
+    {
+      "id": "field-001",
+      "name": "db",
+      "type": "*sql.DB"
+    },
+    {
+      "id": "field-002",
+      "name": "logger",
+      "type": "*zap.Logger"
+    }
+  ]
 }
 ```
 
@@ -615,6 +873,24 @@ POST /codeapi/v1/callers
 }
 ```
 
+**Response:**
+```json
+{
+  "callers": [
+    {
+      "id": "func-100",
+      "name": "main",
+      "file_path": "src/main.go"
+    },
+    {
+      "id": "func-101",
+      "name": "handleRequest",
+      "file_path": "src/handler.go"
+    }
+  ]
+}
+```
+
 ---
 
 #### Get Callees
@@ -633,19 +909,83 @@ POST /codeapi/v1/callees
 }
 ```
 
+**Response:**
+```json
+{
+  "callees": [
+    {
+      "id": "func-200",
+      "name": "validateInput",
+      "file_path": "src/validation.go"
+    },
+    {
+      "id": "func-201",
+      "name": "saveToDatabase",
+      "file_path": "src/db.go"
+    }
+  ]
+}
+```
+
 ---
 
-#### Get Inheritance Tree
+#### Get Data Dependents
+
+Get entities that depend on a variable or field's data.
 
 ```
-POST /codeapi/v1/inheritance
+POST /codeapi/v1/data/dependents
 ```
 
 **Request:**
 ```json
 {
   "repo_name": "my-project",
-  "class_id": "class-456"
+  "variable_id": "var-123"
+}
+```
+
+**Response:**
+```json
+{
+  "dependents": [
+    {
+      "id": "func-300",
+      "name": "processData",
+      "type": "function"
+    }
+  ]
+}
+```
+
+---
+
+#### Get Data Sources
+
+Get the sources of data for a variable or field.
+
+```
+POST /codeapi/v1/data/sources
+```
+
+**Request:**
+```json
+{
+  "repo_name": "my-project",
+  "variable_id": "var-123"
+}
+```
+
+**Response:**
+```json
+{
+  "sources": [
+    {
+      "id": "func-400",
+      "name": "fetchData",
+      "type": "function"
+    }
+  ]
 }
 ```
 
@@ -665,6 +1005,109 @@ POST /codeapi/v1/impact
   "repo_name": "my-project",
   "function_id": "func-789",
   "max_depth": 5
+}
+```
+
+**Response:**
+```json
+{
+  "impacted": [
+    {
+      "id": "func-100",
+      "name": "main",
+      "depth": 1,
+      "impact_type": "direct_caller"
+    },
+    {
+      "id": "func-101",
+      "name": "runServer",
+      "depth": 2,
+      "impact_type": "indirect_caller"
+    }
+  ],
+  "total_impacted": 15
+}
+```
+
+---
+
+#### Get Inheritance Tree
+
+```
+POST /codeapi/v1/inheritance
+```
+
+**Request:**
+```json
+{
+  "repo_name": "my-project",
+  "class_id": "class-456"
+}
+```
+
+**Response:**
+```json
+{
+  "class": {
+    "id": "class-456",
+    "name": "UserService"
+  },
+  "parents": [
+    {
+      "id": "class-100",
+      "name": "BaseService"
+    }
+  ],
+  "children": [
+    {
+      "id": "class-500",
+      "name": "AdminUserService"
+    }
+  ],
+  "interfaces": [
+    {
+      "id": "interface-001",
+      "name": "Service"
+    }
+  ]
+}
+```
+
+---
+
+#### Get Field Accessors
+
+Get functions that read or write a specific field.
+
+```
+POST /codeapi/v1/field/accessors
+```
+
+**Request:**
+```json
+{
+  "repo_name": "my-project",
+  "field_id": "field-001"
+}
+```
+
+**Response:**
+```json
+{
+  "readers": [
+    {
+      "id": "func-500",
+      "name": "GetConnection",
+      "access_type": "read"
+    }
+  ],
+  "writers": [
+    {
+      "id": "func-501",
+      "name": "SetConnection",
+      "access_type": "write"
+    }
+  ]
 }
 ```
 
@@ -706,40 +1149,38 @@ Execute write Cypher queries (use with caution).
 POST /codeapi/v1/cypher/write
 ```
 
+**Request:**
+```json
+{
+  "repo_name": "my-project",
+  "query": "MATCH (f:Function {name: 'deprecated'}) SET f.deprecated = true"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "nodes_affected": 3
+}
+```
+
 ---
 
-### API Endpoint Summary
+#### CodeAPI Health Check
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/v1/health` | Health check |
-| `POST` | `/api/v1/buildIndex` | Build repository index |
-| `POST` | `/api/v1/indexFile` | Index specific files |
-| `POST` | `/api/v1/searchSimilarCode` | Semantic code search |
-| `POST` | `/api/v1/functionDependencies` | Get function call dependencies |
-| `POST` | `/api/v1/processDirectory` | Process directory for embeddings |
-| `GET` | `/codeapi/v1/repos` | List indexed repositories |
-| `POST` | `/codeapi/v1/files` | List files in repository |
-| `POST` | `/codeapi/v1/classes` | List classes |
-| `POST` | `/codeapi/v1/methods` | List methods |
-| `POST` | `/codeapi/v1/functions` | List functions |
-| `POST` | `/codeapi/v1/classes/find` | Find classes by pattern |
-| `POST` | `/codeapi/v1/methods/find` | Find methods by pattern |
-| `POST` | `/codeapi/v1/class` | Get class details |
-| `POST` | `/codeapi/v1/method` | Get method details |
-| `POST` | `/codeapi/v1/class/methods` | Get methods of a class |
-| `POST` | `/codeapi/v1/class/fields` | Get fields of a class |
-| `POST` | `/codeapi/v1/callgraph` | Get call graph |
-| `POST` | `/codeapi/v1/callers` | Get callers of a function |
-| `POST` | `/codeapi/v1/callees` | Get callees of a function |
-| `POST` | `/codeapi/v1/data/dependents` | Get data dependents |
-| `POST` | `/codeapi/v1/data/sources` | Get data sources |
-| `POST` | `/codeapi/v1/impact` | Impact analysis |
-| `POST` | `/codeapi/v1/inheritance` | Get inheritance tree |
-| `POST` | `/codeapi/v1/field/accessors` | Get field accessors |
-| `POST` | `/codeapi/v1/cypher` | Execute read Cypher query |
-| `POST` | `/codeapi/v1/cypher/write` | Execute write Cypher query |
-| `GET` | `/codeapi/v1/health` | CodeAPI health check |
+```
+GET /codeapi/v1/health
+```
+
+**Response:**
+```json
+{
+  "status": "healthy"
+}
+```
+
+---
 
 ## Docker
 
