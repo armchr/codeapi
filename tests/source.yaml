@@ -1,0 +1,22 @@
+source:
+  repositories:
+    - name: python-calculator
+      path: /Users/anindya/src/armchr/bot-go/tests/repos/python-calculator
+      language: python
+      commitOnly: false
+    - name: go-calculator
+      path: /Users/anindya/src/armchr/bot-go/tests/repos/go-calculator
+      language: go
+      commitOnly: false
+    - name: typescript-calculator
+      path: /Users/anindya/src/armchr/bot-go/tests/repos/typescript-calculator
+      language: typescript
+      commitOnly: false
+    - name: java-modern-calculator
+      path: /Users/anindya/src/armchr/bot-go/tests/repos/java-modern-calculator
+      language: java
+      commitOnly: false
+    - name: java8-calculator
+      path: /Users/anindya/src/armchr/bot-go/tests/repos/java8-calculator
+      language: java
+      commitOnly: false

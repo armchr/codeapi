@@ -1,0 +1,10 @@
+source:
+  repositories:
+    - name: bot-go
+      path: /Users/anindya/src/armchr/bot-go
+      language: go
+      commitOnly: false
+    - name: code_explainer_ui
+      path: /Users/anindya/src/designer/armchair/armchair/code_explainer_ui
+      language: go
+      commitOnly: false

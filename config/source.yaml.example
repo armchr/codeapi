@@ -1,0 +1,38 @@
+# CodeAPI Source Repository Configuration
+# Copy this file to source.yaml and configure your repositories
+
+source:
+  repositories:
+    # Example Go repository
+    - name: my-go-project
+      path: /path/to/your/go/project
+      language: go
+      disabled: false
+      # Skip files that don't match the primary language
+      skip_other_languages: false
+
+    # Example Python repository
+    - name: my-python-project
+      path: /path/to/your/python/project
+      language: python
+      disabled: false
+
+    # Example TypeScript repository
+    - name: my-ts-project
+      path: /path/to/your/typescript/project
+      language: typescript
+      disabled: true  # Set to false to enable
+
+    # Example Java repository
+    - name: my-java-project
+      path: /path/to/your/java/project
+      language: java
+      disabled: true
+
+    # Example JavaScript repository
+    - name: my-js-project
+      path: /path/to/your/javascript/project
+      language: javascript
+      disabled: true
+
+# Supported languages: go, python, java, typescript, javascript

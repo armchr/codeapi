@@ -1,0 +1,70 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Build output
+/codeapi
+/run_eval
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.html
+
+# Go workspace file
+go.work
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Log files
+*.log
+logs/
+
+# Configuration files with credentials (use .example files as templates)
+config/app.yaml
+config/source.yaml
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Database files
+*.db
+*.sqlite
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+
+# Model files and data
+cmd/ngram_models/
+*.gob
+
+# Evaluation results
+eval_results.json
+
+# Python virtual environment (for LSP servers)
+.venv/
+venv/
+__pycache__/
+
+# Node modules (for TypeScript LSP)
+node_modules/
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
