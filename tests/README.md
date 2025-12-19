@@ -20,6 +20,7 @@ This directory contains test repositories for validating the codeapi parser acro
 | [typescript-calculator](#typescript-calculator) | TypeScript 5.x | 7 | Advanced types, generics, async patterns |
 | [java-modern-calculator](#java-modern-calculator) | Java 17+ | 4 | Records, sealed classes, pattern matching |
 | [java8-calculator](#java8-calculator) | Java 8 | 4 | Traditional Java without modern features |
+| [csharp-service](#csharp-service) | C# .NET 8 | 13 | Multi-project solution, EF Core, HTTP client, DI |
 
 ---
 
@@ -204,6 +205,67 @@ This repository implements the same functionality as `java-modern-calculator` bu
 
 ---
 
+## C# Service
+
+**Path:** `repos/csharp-service/`
+**Language:** C# .NET 8
+**Files:** 13 (multi-project solution)
+
+### Structure
+```
+csharp-service/
+├── CSharpService.sln              # Solution file
+└── src/
+    ├── CSharpService.Api/         # Web API layer
+    │   ├── CSharpService.Api.csproj
+    │   ├── Program.cs             # Entry point, DI configuration
+    │   ├── appsettings.json
+    │   └── Controllers/
+    │       ├── WeatherController.cs
+    │       └── HealthController.cs
+    ├── CSharpService.Core/        # Domain/business logic
+    │   ├── CSharpService.Core.csproj
+    │   ├── Models/
+    │   │   ├── Weather.cs         # Entity, DTOs, records
+    │   │   └── ApiResponse.cs     # Generic response wrappers
+    │   ├── Interfaces/
+    │   │   ├── IWeatherRepository.cs
+    │   │   └── ICacheService.cs
+    │   └── Services/
+    │       ├── IWeatherService.cs
+    │       └── WeatherService.cs
+    └── CSharpService.Infrastructure/  # Data access & external
+        ├── CSharpService.Infrastructure.csproj
+        ├── Data/
+        │   └── AppDbContext.cs    # EF Core DbContext
+        ├── Repositories/
+        │   └── WeatherRepository.cs
+        └── External/
+            ├── OpenWeatherApiClient.cs  # HTTP client
+            └── MemoryCacheService.cs
+```
+
+### Constructs Covered
+
+| Category | Constructs |
+|----------|------------|
+| **Namespaces/Using** | Multi-project namespaces, using directives, global usings, static using, using aliases |
+| **Classes** | Regular classes, abstract classes, partial classes, static classes, nested classes, records, record structs |
+| **Interfaces** | Interface declarations, interface inheritance, default interface methods |
+| **Generics** | Generic classes (`ApiResponse<T>`), generic methods, constraints (`where T : class`), covariance/contravariance |
+| **Properties** | Auto properties, init-only setters, required properties, computed properties |
+| **Async/Await** | `async`/`await`, `Task<T>`, `CancellationToken`, async streams |
+| **Dependency Injection** | Constructor injection, `IServiceCollection`, `IOptions<T>`, scoped/singleton/transient |
+| **Entity Framework** | `DbContext`, `DbSet<T>`, Fluent API configuration, LINQ queries, `ExecuteDeleteAsync` |
+| **HTTP Client** | `HttpClient`, `IHttpClientFactory`, JSON serialization, retry patterns |
+| **LINQ** | Query syntax, method syntax, `Select`, `Where`, `OrderBy`, `FirstOrDefault`, `ToList` |
+| **Null Handling** | Nullable reference types, null-coalescing (`??`), null-conditional (`?.`), `ArgumentNullException.ThrowIfNull` |
+| **Records** | Record types, positional parameters, `with` expressions |
+| **Attributes** | Data annotations (`[Required]`, `[MaxLength]`), API attributes (`[HttpGet]`, `[FromQuery]`) |
+| **Patterns** | Repository pattern, Unit of Work, Factory pattern, Options pattern, Builder pattern |
+
+---
+
 ## Configuration
 
 The test repositories are configured in `tests/source.yaml`. The paths use the `${CODEAPI_TEST_DIR}` environment variable which is automatically set by the test script:
@@ -226,6 +288,9 @@ source:
     - name: java8-calculator
       path: ${CODEAPI_TEST_DIR}/repos/java8-calculator
       language: java
+    - name: csharp-service
+      path: ${CODEAPI_TEST_DIR}/repos/csharp-service
+      language: csharp
 ```
 
 ## Adding New Test Repositories

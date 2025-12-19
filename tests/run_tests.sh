@@ -35,6 +35,7 @@ REPOS=(
     "typescript-calculator"
     "java-modern-calculator"
     "java8-calculator"
+    "csharp-service"
 )
 
 print_usage() {

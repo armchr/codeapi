@@ -15,3 +15,6 @@ source:
     - name: java8-calculator
       path: ${CODEAPI_TEST_DIR}/repos/java8-calculator
       language: java
+    - name: csharp-service
+      path: ${CODEAPI_TEST_DIR}/repos/csharp-service
+      language: csharp
