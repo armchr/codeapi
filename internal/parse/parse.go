@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
+	csharp "github.com/tree-sitter/tree-sitter-c-sharp/bindings/go"
 	golang "github.com/tree-sitter/tree-sitter-go/bindings/go"
 	java "github.com/tree-sitter/tree-sitter-java/bindings/go"
 	javascript "github.com/tree-sitter/tree-sitter-javascript/bindings/go"
@@ -28,6 +29,7 @@ const (
 	TypeScript
 	Python
 	Java
+	CSharp
 	Unknown
 )
 
@@ -50,6 +52,8 @@ func (lt LanguageType) String() string {
 		return "python"
 	case Java:
 		return "java"
+	case CSharp:
+		return "csharp"
 	default:
 		return "unknown"
 	}
@@ -67,6 +71,8 @@ func NewLanguageTypeFromString(lang string) LanguageType {
 		return Python
 	case "java":
 		return Java
+	case "csharp", "c#", "cs":
+		return CSharp
 	default:
 		return Unknown
 	}
@@ -94,6 +100,8 @@ func (fp *FileParser) DetectLanguage(filePath string) LanguageType {
 		return Python
 	case ".java":
 		return Java
+	case ".cs":
+		return CSharp
 	default:
 		return Unknown
 	}
@@ -111,6 +119,8 @@ func (fp *FileParser) GetLanguageParser(langType LanguageType) (*tree_sitter.Lan
 		return tree_sitter.NewLanguage(python.Language()), nil
 	case Java:
 		return tree_sitter.NewLanguage(java.Language()), nil
+	case CSharp:
+		return tree_sitter.NewLanguage(csharp.Language()), nil
 	default:
 		return nil, fmt.Errorf("unsupported language type: %v", langType)
 	}
@@ -135,6 +145,9 @@ func (fp *FileParser) GetLanguageVisitor(langType LanguageType, ts *TranslateFro
 
 	case JavaScript, TypeScript:
 		return NewPrintVisitor(ts), nil
+
+	case CSharp:
+		return NewCSharpVisitor(fp.logger, ts), nil
 
 	default:
 		return nil, fmt.Errorf("unsupported language type: %v", langType)
@@ -318,6 +331,8 @@ func (fp *FileParser) isAllowedFileExtensionsInRepo(repo *config.Repository, lan
 		return languageType == Go
 	case "java":
 		return languageType == Java
+	case "csharp", "c#", "cs":
+		return languageType == CSharp
 	default:
 		return false
 	}
