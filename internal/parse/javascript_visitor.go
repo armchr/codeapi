@@ -569,3 +569,14 @@ func (jsv *JavaScriptVisitor) handleTemplateString(ctx context.Context, tsNode *
 	}
 	return ast.InvalidNodeID
 }
+
+// HasSpecialName returns false for JavaScript - no special naming conventions
+func (jsv *JavaScriptVisitor) HasSpecialName(kind string) bool {
+	return false
+}
+
+// GetName is not implemented for JavaScript visitor
+func (jsv *JavaScriptVisitor) GetName(tsNode *tree_sitter.Node) string {
+	jsv.logger.Error("GetName not implemented for JavaScript visitor")
+	return ""
+}

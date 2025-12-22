@@ -205,3 +205,14 @@ func (pv *PythonVisitor) handleAssignment(ctx context.Context, tsNode *tree_sitt
 
 	return pv.translate.HandleAssignment(ctx, tsNode, lhsNode, rhsNode, scopeID)
 }
+
+// HasSpecialName returns false for Python - no special naming conventions
+func (pv *PythonVisitor) HasSpecialName(kind string) bool {
+	return false
+}
+
+// GetName is not implemented for Python visitor
+func (pv *PythonVisitor) GetName(tsNode *tree_sitter.Node) string {
+	pv.logger.Error("GetName not implemented for Python visitor")
+	return ""
+}

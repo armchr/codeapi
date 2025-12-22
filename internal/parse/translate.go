@@ -129,6 +129,8 @@ func NewScope(parent *Scope, isRhs bool) *Scope {
 
 type SyntaxTreeVisitor interface {
 	TraverseNode(ctx context.Context, tsNode *tree_sitter.Node, scopeID ast.NodeID) ast.NodeID
+	HasSpecialName(kind string) bool
+	GetName(tsNode *tree_sitter.Node) string
 }
 
 type TranslateFromSyntaxTree struct {
@@ -342,6 +344,9 @@ func (t *TranslateFromSyntaxTree) ToRange(node *tree_sitter.Node) base.Range {
 
 func (t *TranslateFromSyntaxTree) GetTreeNodeName(node *tree_sitter.Node) string {
 	kind := node.Kind()
+	if t.Visitor.HasSpecialName(kind) {
+		return t.Visitor.GetName(node)
+	}
 	if kind == "scoped_identifier" ||
 		kind == "identifier" ||
 		kind == "property_identifier" ||

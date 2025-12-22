@@ -758,3 +758,14 @@ func (gv *GoVisitor) getPackageNameFromPath(importPath string) string {
 	}
 	return importPath[lastSlash+1:]
 }
+
+// HasSpecialName returns false for Go - no special naming conventions
+func (gv *GoVisitor) HasSpecialName(kind string) bool {
+	return false
+}
+
+// GetName is not implemented for Go visitor
+func (gv *GoVisitor) GetName(tsNode *tree_sitter.Node) string {
+	gv.logger.Error("GetName not implemented for Go visitor")
+	return ""
+}

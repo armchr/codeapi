@@ -71,3 +71,14 @@ func (pv *PrintVisitor) TraverseNode(ctx context.Context, tsNode *tree_sitter.No
 func (pv *PrintVisitor) WriteToFile(filePath string, prefix string) error {
 	return os.WriteFile(filePath, []byte(prefix+"\n\n"+pv.content), 0644)
 }
+
+// HasSpecialName returns false for PrintVisitor - no special naming conventions
+func (pv *PrintVisitor) HasSpecialName(kind string) bool {
+	return false
+}
+
+// GetName is not implemented for PrintVisitor
+func (pv *PrintVisitor) GetName(tsNode *tree_sitter.Node) string {
+	// PrintVisitor is for debugging, GetName not needed
+	return ""
+}
