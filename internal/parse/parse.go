@@ -141,7 +141,9 @@ func (fp *FileParser) GetLanguageVisitor(langType LanguageType, ts *TranslateFro
 	*/
 	case Python:
 		return NewPythonVisitor(fp.logger, ts), nil
-		//return NewPrintVisitor(fp.logger, ts), nil
+
+	case Java:
+		return NewJavaVisitor(fp.logger, ts), nil
 
 	case JavaScript, TypeScript:
 		return NewPrintVisitor(ts), nil

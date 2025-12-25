@@ -124,14 +124,17 @@ run_index_build() {
     mkdir -p "${LOG_DIR}"
 
     # Run codeapi with build-index, capturing output
-    echo -e "${YELLOW}Running: ${BINARY} -build-index ${repo_name} -app ... -source ...${NC}"
+    local dump_file="${LOG_DIR}/${repo_name}.dump.txt"
+    echo -e "${YELLOW}Running: ${BINARY} -build-index ${repo_name} -app ... -source ... -test-dump ...${NC}"
     echo -e "${YELLOW}Log file: ${log_file}${NC}"
+    echo -e "${YELLOW}Dump file: ${dump_file}${NC}"
 
     # Run the command and capture both stdout and stderr
     "${BINARY}" \
         -build-index "${repo_name}" \
         -app "${APP_CONFIG}" \
-        -source "${SOURCE_CONFIG}" 2>&1 | tee "${log_file}"
+        -source "${SOURCE_CONFIG}" \
+        -test-dump "${dump_file}" 2>&1 | tee "${log_file}"
     exit_code=${PIPESTATUS[0]}
 
     # Check exit code
