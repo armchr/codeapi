@@ -421,6 +421,15 @@ func (t *TranslateFromSyntaxTree) CreateFunction(ctx context.Context,
 	fn *tree_sitter.Node,
 	fnName string,
 	params []*tree_sitter.Node, body *tree_sitter.Node) ast.NodeID {
+	return t.CreateFunctionWithMetadata(ctx, scopeID, fn, fnName, params, body, nil)
+}
+
+func (t *TranslateFromSyntaxTree) CreateFunctionWithMetadata(ctx context.Context,
+	scopeID ast.NodeID,
+	fn *tree_sitter.Node,
+	fnName string,
+	params []*tree_sitter.Node, body *tree_sitter.Node,
+	metadata map[string]any) ast.NodeID {
 	funcName := fnName
 	if funcName == "" {
 		funcName = t.GetTreeNodeName(fn)
@@ -432,6 +441,9 @@ func (t *TranslateFromSyntaxTree) CreateFunction(ctx context.Context,
 	funcNode := t.NewNode(
 		ast.NodeTypeFunction, funcName, t.ToRange(fn), scopeID,
 	)
+	if metadata != nil {
+		funcNode.MetaData = metadata
+	}
 	t.CodeGraph.CreateFunction(ctx, funcNode)
 
 	t.PushScope(false)
@@ -562,6 +574,16 @@ func (t *TranslateFromSyntaxTree) HandleClass(ctx context.Context,
 	name string,
 	methods []*tree_sitter.Node,
 	fields []*tree_sitter.Node) ast.NodeID {
+	return t.HandleClassWithMetadata(ctx, scopeID, cls, name, methods, fields, nil)
+}
+
+func (t *TranslateFromSyntaxTree) HandleClassWithMetadata(ctx context.Context,
+	scopeID ast.NodeID,
+	cls *tree_sitter.Node,
+	name string,
+	methods []*tree_sitter.Node,
+	fields []*tree_sitter.Node,
+	metadata map[string]any) ast.NodeID {
 	className := name
 	if className == "" {
 		className = t.GetTreeNodeName(cls)
@@ -573,6 +595,9 @@ func (t *TranslateFromSyntaxTree) HandleClass(ctx context.Context,
 	classNode := t.NewNode(
 		ast.NodeTypeClass, className, t.ToRange(cls), scopeID,
 	)
+	if metadata != nil {
+		classNode.MetaData = metadata
+	}
 	t.CodeGraph.CreateClass(ctx, classNode)
 
 	t.PushScope(false)

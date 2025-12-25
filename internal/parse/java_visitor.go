@@ -2,6 +2,7 @@ package parse
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/armchr/codeapi/internal/model/ast"
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
@@ -18,6 +19,95 @@ func NewJavaVisitor(logger *zap.Logger, ts *TranslateFromSyntaxTree) *JavaVisito
 		translate: ts,
 		logger:    logger,
 	}
+}
+
+// extractAnnotations extracts annotations from a modifiers node and returns them as JSON strings
+// Each annotation is serialized to JSON for Neo4j compatibility (Neo4j can't store nested maps)
+func (jv *JavaVisitor) extractAnnotations(tsNode *tree_sitter.Node) []string {
+	modifiers := jv.translate.TreeChildByKind(tsNode, "modifiers")
+	if modifiers == nil {
+		return nil
+	}
+
+	var annotations []string
+
+	// Find all marker_annotation and annotation nodes
+	for i := uint(0); i < modifiers.ChildCount(); i++ {
+		child := modifiers.Child(i)
+		kind := child.Kind()
+
+		if kind == "marker_annotation" || kind == "annotation" {
+			annotation := make(map[string]any)
+
+			// Get the annotation name from the identifier child
+			nameNode := jv.translate.TreeChildByKind(child, "identifier")
+			if nameNode != nil {
+				annotation["name"] = jv.translate.String(nameNode)
+			}
+
+			// For annotations with arguments, extract the argument list
+			if kind == "annotation" {
+				argList := jv.translate.TreeChildByKind(child, "annotation_argument_list")
+				if argList != nil {
+					args := jv.extractAnnotationArguments(argList)
+					if len(args) > 0 {
+						annotation["arguments"] = args
+					}
+				}
+			}
+
+			if annotation["name"] != nil {
+				// Serialize to JSON string for Neo4j compatibility
+				jsonBytes, err := json.Marshal(annotation)
+				if err == nil {
+					annotations = append(annotations, string(jsonBytes))
+				}
+			}
+		}
+	}
+
+	return annotations
+}
+
+// extractAnnotationArguments extracts arguments from an annotation_argument_list node
+func (jv *JavaVisitor) extractAnnotationArguments(argList *tree_sitter.Node) map[string]string {
+	args := make(map[string]string)
+
+	for i := uint(0); i < argList.ChildCount(); i++ {
+		child := argList.Child(i)
+		kind := child.Kind()
+
+		switch kind {
+		case "string_literal":
+			// Single value annotation like @GetMapping("/path")
+			// Extract the string content (without quotes)
+			stringFragment := jv.translate.TreeChildByKind(child, "string_fragment")
+			if stringFragment != nil {
+				args["value"] = jv.translate.String(stringFragment)
+			}
+		case "element_value_pair":
+			// Named argument like @Size(min = 1, max = 50)
+			keyNode := jv.translate.TreeChildByKind(child, "identifier")
+			if keyNode != nil {
+				key := jv.translate.String(keyNode)
+				// Try to get the value - could be string_literal, decimal_integer_literal, etc.
+				for j := uint(0); j < child.ChildCount(); j++ {
+					valChild := child.Child(j)
+					valKind := valChild.Kind()
+					if valKind == "string_literal" {
+						stringFragment := jv.translate.TreeChildByKind(valChild, "string_fragment")
+						if stringFragment != nil {
+							args[key] = jv.translate.String(stringFragment)
+						}
+					} else if valKind == "decimal_integer_literal" || valKind == "true" || valKind == "false" {
+						args[key] = jv.translate.String(valChild)
+					}
+				}
+			}
+		}
+	}
+
+	return args
 }
 
 func (jv *JavaVisitor) TraverseNode(ctx context.Context, tsNode *tree_sitter.Node, scopeID ast.NodeID) ast.NodeID {
@@ -213,9 +303,16 @@ func (jv *JavaVisitor) handleClassDeclaration(ctx context.Context, tsNode *tree_
 		fields = jv.translate.TreeChildrenByKind(classBody, "field_declaration")
 	}
 
+	// Extract annotations from modifiers
+	var metadata map[string]any
+	annotations := jv.extractAnnotations(tsNode)
+	if len(annotations) > 0 {
+		metadata = map[string]any{"annotations": annotations}
+	}
+
 	// Pass nil for fields - we'll handle field_declarations separately
 	// because they have a different structure (variable_declarator children)
-	classNodeID := jv.translate.HandleClass(ctx, scopeID, tsNode, className, methods, nil)
+	classNodeID := jv.translate.HandleClassWithMetadata(ctx, scopeID, tsNode, className, methods, nil, metadata)
 
 	// Handle field declarations within the class scope
 	if classNodeID != ast.InvalidNodeID {
@@ -234,14 +331,23 @@ func (jv *JavaVisitor) handleInterfaceDeclaration(ctx context.Context, tsNode *t
 		interfaceName = jv.translate.String(nameNode)
 	}
 
-	interfaceBody := jv.translate.TreeChildByFieldName(tsNode, "body")
+	interfaceBody := jv.translate.TreeChildByKind(tsNode, "interface_body")
 	var methods []*tree_sitter.Node
 
 	if interfaceBody != nil {
 		methods = jv.translate.TreeChildrenByKind(interfaceBody, "method_declaration")
 	}
 
-	return jv.translate.HandleClass(ctx, scopeID, tsNode, interfaceName, methods, nil)
+	// Extract annotations and mark as interface
+	var metadata map[string]any
+	annotations := jv.extractAnnotations(tsNode)
+	if len(annotations) > 0 {
+		metadata = map[string]any{"annotations": annotations, "is_interface": true}
+	} else {
+		metadata = map[string]any{"is_interface": true}
+	}
+
+	return jv.translate.HandleClassWithMetadata(ctx, scopeID, tsNode, interfaceName, methods, nil, metadata)
 }
 
 func (jv *JavaVisitor) handleRecordDeclaration(ctx context.Context, tsNode *tree_sitter.Node, scopeID ast.NodeID) ast.NodeID {
@@ -258,13 +364,22 @@ func (jv *JavaVisitor) handleRecordDeclaration(ctx context.Context, tsNode *tree
 		fields = jv.translate.TreeChildrenByKind(paramList, "formal_parameter")
 	}
 
-	recordBody := jv.translate.TreeChildByFieldName(tsNode, "body")
+	recordBody := jv.translate.TreeChildByKind(tsNode, "class_body")
 	var methods []*tree_sitter.Node
 	if recordBody != nil {
 		methods = jv.translate.TreeChildrenByKind(recordBody, "method_declaration")
 	}
 
-	return jv.translate.HandleClass(ctx, scopeID, tsNode, recordName, methods, fields)
+	// Extract annotations and mark as record
+	var metadata map[string]any
+	annotations := jv.extractAnnotations(tsNode)
+	if len(annotations) > 0 {
+		metadata = map[string]any{"annotations": annotations, "is_record": true}
+	} else {
+		metadata = map[string]any{"is_record": true}
+	}
+
+	return jv.translate.HandleClassWithMetadata(ctx, scopeID, tsNode, recordName, methods, fields, metadata)
 }
 
 func (jv *JavaVisitor) handleEnumDeclaration(ctx context.Context, tsNode *tree_sitter.Node, scopeID ast.NodeID) ast.NodeID {
@@ -274,7 +389,7 @@ func (jv *JavaVisitor) handleEnumDeclaration(ctx context.Context, tsNode *tree_s
 		enumName = jv.translate.String(nameNode)
 	}
 
-	enumBody := jv.translate.TreeChildByFieldName(tsNode, "body")
+	enumBody := jv.translate.TreeChildByKind(tsNode, "enum_body")
 	var methods []*tree_sitter.Node
 	var fields []*tree_sitter.Node
 
@@ -283,7 +398,16 @@ func (jv *JavaVisitor) handleEnumDeclaration(ctx context.Context, tsNode *tree_s
 		fields = jv.translate.TreeChildrenByKind(enumBody, "enum_constant")
 	}
 
-	return jv.translate.HandleClass(ctx, scopeID, tsNode, enumName, methods, fields)
+	// Extract annotations and mark as enum
+	var metadata map[string]any
+	annotations := jv.extractAnnotations(tsNode)
+	if len(annotations) > 0 {
+		metadata = map[string]any{"annotations": annotations, "is_enum": true}
+	} else {
+		metadata = map[string]any{"is_enum": true}
+	}
+
+	return jv.translate.HandleClassWithMetadata(ctx, scopeID, tsNode, enumName, methods, fields, metadata)
 }
 
 func (jv *JavaVisitor) handleMethodDeclaration(ctx context.Context, tsNode *tree_sitter.Node, scopeID ast.NodeID) ast.NodeID {
@@ -303,7 +427,14 @@ func (jv *JavaVisitor) handleMethodDeclaration(ctx context.Context, tsNode *tree
 		params = append(params, spreadParams...)
 	}
 
-	return jv.translate.CreateFunction(ctx, scopeID, tsNode, methodName, params, bodyNode)
+	// Extract annotations from modifiers
+	var metadata map[string]any
+	annotations := jv.extractAnnotations(tsNode)
+	if len(annotations) > 0 {
+		metadata = map[string]any{"annotations": annotations}
+	}
+
+	return jv.translate.CreateFunctionWithMetadata(ctx, scopeID, tsNode, methodName, params, bodyNode, metadata)
 }
 
 func (jv *JavaVisitor) handleConstructorDeclaration(ctx context.Context, tsNode *tree_sitter.Node, scopeID ast.NodeID) ast.NodeID {
@@ -314,14 +445,21 @@ func (jv *JavaVisitor) handleConstructorDeclaration(ctx context.Context, tsNode 
 	}
 
 	paramsNode := jv.translate.TreeChildByFieldName(tsNode, "parameters")
-	bodyNode := jv.translate.TreeChildByFieldName(tsNode, "body")
+	bodyNode := jv.translate.TreeChildByKind(tsNode, "constructor_body")
 
 	var params []*tree_sitter.Node
 	if paramsNode != nil {
 		params = jv.translate.TreeChildrenByKind(paramsNode, "formal_parameter")
 	}
 
-	return jv.translate.CreateFunction(ctx, scopeID, tsNode, constructorName, params, bodyNode)
+	// Extract annotations and mark as constructor
+	metadata := map[string]any{"is_constructor": true}
+	annotations := jv.extractAnnotations(tsNode)
+	if len(annotations) > 0 {
+		metadata["annotations"] = annotations
+	}
+
+	return jv.translate.CreateFunctionWithMetadata(ctx, scopeID, tsNode, constructorName, params, bodyNode, metadata)
 }
 
 func (jv *JavaVisitor) handleFieldDeclaration(ctx context.Context, tsNode *tree_sitter.Node, scopeID ast.NodeID) ast.NodeID {
