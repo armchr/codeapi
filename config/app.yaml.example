@@ -4,14 +4,20 @@
 app:
   port: 8181
   codegraph: true
-  # Path to Go language server wrapper script (optional)
-  gopls: "${CODEAPI_ROOT}/scripts/gopls.sh"
-  # Path to Python language server wrapper script (optional)
-  python: "${CODEAPI_ROOT}/scripts/pylsp.sh"
   # Number of threads for file processing
   num_file_threads: 5
   # Max concurrent files to process in indexFile API
   max_concurrent_file_processing: 5
+
+# Language Server Configuration
+# Add new languages by adding entries in the format:
+#   <language>: <path to language server executable>
+language_servers:
+  go: "${CODEAPI_ROOT}/scripts/gopls.sh"
+  python: "${CODEAPI_ROOT}/scripts/pylsp.sh"
+  csharp: "${CODEAPI_ROOT}/scripts/cslsp.sh"
+  # java: "${CODEAPI_ROOT}/scripts/jdtls.sh"
+  # typescript: "${CODEAPI_ROOT}/scripts/tsserver.sh"
 
 # Neo4j Configuration (Code Graph Storage)
 neo4j:

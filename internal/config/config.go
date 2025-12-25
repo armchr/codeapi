@@ -25,12 +25,23 @@ type Repository struct {
 type App struct {
 	Port                        int    `yaml:"port"`
 	CodeGraph                   bool   `yaml:"codegraph"`
-	Gopls                       string `yaml:"gopls"`
-	Python                      string `yaml:"python"`
 	WorkDir                     string `yaml:"workdir,omitempty"`
 	GCThreshold                 int64  `yaml:"gc_threshold,omitempty"`
 	NumFileThreads              int    `yaml:"num_file_threads,omitempty"`
 	MaxConcurrentFileProcessing int    `yaml:"max_concurrent_file_processing,omitempty"`
+}
+
+// LanguageServersConfig holds paths to language server executables
+// Keys are language names (e.g., "go", "python", "csharp"), values are paths to LSP executables
+type LanguageServersConfig map[string]string
+
+// GetLSPPath returns the path to the language server for the given language
+// Returns empty string if no LSP is configured for the language
+func (lsc LanguageServersConfig) GetLSPPath(language string) string {
+	if lsc == nil {
+		return ""
+	}
+	return lsc[language]
 }
 
 type Neo4jConfig struct {
@@ -98,17 +109,18 @@ type GitAnalysisConfig struct {
 }
 
 type Config struct {
-	Source        SourceConfig        `yaml:"source"`
-	Neo4j         Neo4jConfig         `yaml:"neo4j"`
-	Qdrant        QdrantConfig        `yaml:"qdrant"`
-	Chunking      ChunkingConfig      `yaml:"chunking"`
-	Ollama        OllamaConfig        `yaml:"ollama"`
-	BloomFilter   BloomFilterConfig   `yaml:"bloom_filter"`
-	IndexBuilding IndexBuildingConfig `yaml:"index_building"`
-	MySQL         MySQLConfig         `yaml:"mysql"`
-	CodeGraph     CodeGraphConfig     `yaml:"code_graph"`
-	GitAnalysis   GitAnalysisConfig   `yaml:"git_analysis"`
-	App           App                 `yaml:"app"`
+	Source          SourceConfig          `yaml:"source"`
+	Neo4j           Neo4jConfig           `yaml:"neo4j"`
+	Qdrant          QdrantConfig          `yaml:"qdrant"`
+	Chunking        ChunkingConfig        `yaml:"chunking"`
+	Ollama          OllamaConfig          `yaml:"ollama"`
+	BloomFilter     BloomFilterConfig     `yaml:"bloom_filter"`
+	IndexBuilding   IndexBuildingConfig   `yaml:"index_building"`
+	MySQL           MySQLConfig           `yaml:"mysql"`
+	CodeGraph       CodeGraphConfig       `yaml:"code_graph"`
+	GitAnalysis     GitAnalysisConfig     `yaml:"git_analysis"`
+	LanguageServers LanguageServersConfig `yaml:"language_servers"`
+	App             App                   `yaml:"app"`
 }
 
 // expandEnvVars expands environment variables in the given string

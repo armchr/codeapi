@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/armchr/codeapi/internal/config"
@@ -17,7 +18,11 @@ type GoLanguageServerClient struct {
 
 func NewGoLanguageServerClient(config *config.Config, rootPath string, logger *zap.Logger) (*GoLanguageServerClient, error) {
 	logger.Info("Creating new Go language server client")
-	base, err := NewBaseClient(config.App.Gopls, logger)
+	lspPath := config.LanguageServers.GetLSPPath("go")
+	if lspPath == "" {
+		return nil, fmt.Errorf("no language server configured for Go")
+	}
+	base, err := NewBaseClient(lspPath, logger)
 	if err != nil {
 		return nil, err
 	}

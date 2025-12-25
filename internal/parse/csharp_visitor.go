@@ -22,31 +22,6 @@ func NewCSharpVisitor(logger *zap.Logger, ts *TranslateFromSyntaxTree) *CSharpVi
 	}
 }
 
-func (cv *CSharpVisitor) HasSpecialName(kind string) bool {
-	switch kind {
-	case "parameter":
-		return true
-	}
-
-	return false
-}
-
-func (cv *CSharpVisitor) GetName(tsNode *tree_sitter.Node) string {
-	if tsNode == nil {
-		return ""
-	}
-	switch tsNode.Kind() {
-	case "parameter":
-		// the first identifier is the parameter name
-		identNode := cv.translate.TreeChildByKind(tsNode, "identifier")
-		if identNode != nil {
-			return cv.translate.GetTreeNodeName(identNode)
-		}
-	}
-
-	return cv.translate.String(tsNode)
-}
-
 // TraverseNode traverses a C# syntax tree node and returns the created AST node ID
 func (cv *CSharpVisitor) TraverseNode(ctx context.Context, tsNode *tree_sitter.Node, scopeID ast.NodeID) ast.NodeID {
 	if tsNode == nil {
