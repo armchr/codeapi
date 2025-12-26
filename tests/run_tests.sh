@@ -20,6 +20,7 @@ BINARY="${PROJECT_ROOT}/bin/codeapi"
 APP_CONFIG="${PROJECT_ROOT}/config/app.yaml"
 SOURCE_CONFIG="${SCRIPT_DIR}/source.yaml"
 LOG_DIR="${SCRIPT_DIR}/logs"
+GOLDEN_DIR="${SCRIPT_DIR}/golden"
 
 # Colors for output
 RED='\033[0;31m'
@@ -36,21 +37,24 @@ REPOS=(
     "java-modern-calculator"
     "java8-calculator"
     "csharp-service"
+    "spring-petclinic"
 )
 
 print_usage() {
     echo "Usage: $0 [OPTIONS] [repo-name]"
     echo ""
     echo "Options:"
-    echo "  --list        List available test repositories"
-    echo "  --clean-logs  Remove all log files from previous runs"
-    echo "  --help        Show this help message"
+    echo "  --list           List available test repositories"
+    echo "  --clean-logs     Remove all log files from previous runs"
+    echo "  --update-golden  Update golden files with current dump output"
+    echo "  --help           Show this help message"
     echo ""
     echo "Arguments:"
     echo "  repo-name     Name of a specific repository to process (optional)"
     echo "                If not specified, all repositories will be processed"
     echo ""
     echo "Log files are written to: ${LOG_DIR}/"
+    echo "Golden files are stored in: ${GOLDEN_DIR}/"
     echo ""
     echo "Available repositories:"
     for repo in "${REPOS[@]}"; do
@@ -80,6 +84,61 @@ build_binary() {
     fi
 
     echo -e "${GREEN}Build successful${NC}"
+}
+
+# Compare dump file with golden file
+# Returns 0 if match or no golden exists, 1 if mismatch
+compare_with_golden() {
+    local repo_name="$1"
+    local dump_file="$2"
+    local golden_file="${GOLDEN_DIR}/${repo_name}.dump.txt"
+
+    if [[ ! -f "${golden_file}" ]]; then
+        echo -e "${YELLOW}No golden file found for ${repo_name}${NC}"
+        echo -e "${YELLOW}  To create one, run: ./run_tests.sh --update-golden ${repo_name}${NC}"
+        return 0
+    fi
+
+    if [[ ! -f "${dump_file}" ]]; then
+        echo -e "${RED}Dump file not found: ${dump_file}${NC}"
+        return 1
+    fi
+
+    # Compare files, ignoring the timestamp line (line 3 which contains "Generated at:")
+    local diff_output
+    diff_output=$(diff <(grep -v "^# Generated at:" "${golden_file}") \
+                       <(grep -v "^# Generated at:" "${dump_file}") 2>&1)
+
+    if [[ -z "${diff_output}" ]]; then
+        echo -e "${GREEN}✓ Golden file comparison passed${NC}"
+        return 0
+    else
+        echo -e "${RED}✗ Golden file comparison FAILED${NC}"
+        echo -e "${RED}─────────────────────────────────────────${NC}"
+        echo -e "${YELLOW}Differences (first 50 lines):${NC}"
+        echo "${diff_output}" | head -50
+        echo -e "${RED}─────────────────────────────────────────${NC}"
+        echo -e "${YELLOW}To update golden file, run: ./run_tests.sh --update-golden ${repo_name}${NC}"
+        return 1
+    fi
+}
+
+# Update golden file with current dump
+update_golden() {
+    local repo_name="$1"
+    local dump_file="${LOG_DIR}/${repo_name}.dump.txt"
+    local golden_file="${GOLDEN_DIR}/${repo_name}.dump.txt"
+
+    if [[ ! -f "${dump_file}" ]]; then
+        echo -e "${RED}Dump file not found: ${dump_file}${NC}"
+        echo -e "${YELLOW}Run the test first to generate a dump file.${NC}"
+        return 1
+    fi
+
+    mkdir -p "${GOLDEN_DIR}"
+    cp "${dump_file}" "${golden_file}"
+    echo -e "${GREEN}✓ Updated golden file: ${golden_file}${NC}"
+    return 0
 }
 
 check_prerequisites() {
@@ -169,11 +228,24 @@ run_index_build() {
             fi
         done
         echo -e "${RED}─────────────────────────────────────────${NC}"
-        echo -e "${RED}✗ Failed to index ${repo_name} (errors in log)${NC}"
-        return 1
+    else
+        echo -e "${GREEN}✓ Successfully indexed ${repo_name}${NC}"
     fi
 
-    echo -e "${GREEN}✓ Successfully indexed ${repo_name}${NC}"
+    # Compare with golden file if it exists (always run, even if there were errors)
+    local golden_result=0
+    if ! compare_with_golden "${repo_name}" "${dump_file}"; then
+        golden_result=2
+    fi
+
+    # Return appropriate code: errors take priority over golden mismatch
+    if [[ "${has_errors}" == true ]]; then
+        return 1
+    fi
+    if [[ ${golden_result} -ne 0 ]]; then
+        return 2
+    fi
+
     return 0
 }
 
@@ -182,6 +254,8 @@ main() {
     local specific_repo=""
     local failed_repos=()
     local successful_repos=()
+    local golden_mismatch_repos=()
+    local update_golden_mode=false
 
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -207,6 +281,10 @@ main() {
                 fi
                 exit 0
                 ;;
+            --update-golden)
+                update_golden_mode=true
+                shift
+                ;;
             -*)
                 echo -e "${RED}Unknown option: $1${NC}"
                 print_usage
@@ -218,6 +296,23 @@ main() {
                 ;;
         esac
     done
+
+    # Handle update-golden mode
+    if [[ "${update_golden_mode}" == true ]]; then
+        echo -e "${BLUE}╔════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${BLUE}║           Updating Golden Files                        ║${NC}"
+        echo -e "${BLUE}╚════════════════════════════════════════════════════════╝${NC}"
+        echo ""
+
+        if [[ -n "${specific_repo}" ]]; then
+            update_golden "${specific_repo}"
+        else
+            for repo in "${REPOS[@]}"; do
+                update_golden "${repo}"
+            done
+        fi
+        exit 0
+    fi
 
     # Check prerequisites
     check_prerequisites
@@ -232,11 +327,17 @@ main() {
     echo -e "App config:    ${APP_CONFIG}"
     echo -e "Source config: ${SOURCE_CONFIG}"
     echo -e "Log dir:       ${LOG_DIR}"
+    echo -e "Golden dir:    ${GOLDEN_DIR}"
 
     if [[ -n "${specific_repo}" ]]; then
         # Process specific repository
-        if run_index_build "${specific_repo}"; then
+        local result
+        run_index_build "${specific_repo}"
+        result=$?
+        if [[ ${result} -eq 0 ]]; then
             successful_repos+=("${specific_repo}")
+        elif [[ ${result} -eq 2 ]]; then
+            golden_mismatch_repos+=("${specific_repo}")
         else
             failed_repos+=("${specific_repo}")
         fi
@@ -246,8 +347,13 @@ main() {
         echo -e "${YELLOW}Processing all ${#REPOS[@]} test repositories...${NC}"
 
         for repo in "${REPOS[@]}"; do
-            if run_index_build "${repo}"; then
+            local result
+            run_index_build "${repo}"
+            result=$?
+            if [[ ${result} -eq 0 ]]; then
                 successful_repos+=("${repo}")
+            elif [[ ${result} -eq 2 ]]; then
+                golden_mismatch_repos+=("${repo}")
             else
                 failed_repos+=("${repo}")
             fi
@@ -267,6 +373,13 @@ main() {
         done
     fi
 
+    if [[ ${#golden_mismatch_repos[@]} -gt 0 ]]; then
+        echo -e "${YELLOW}Golden mismatch (${#golden_mismatch_repos[@]}):${NC}"
+        for repo in "${golden_mismatch_repos[@]}"; do
+            echo -e "  ${YELLOW}⚠${NC} ${repo}"
+        done
+    fi
+
     if [[ ${#failed_repos[@]} -gt 0 ]]; then
         echo -e "${RED}Failed (${#failed_repos[@]}):${NC}"
         for repo in "${failed_repos[@]}"; do
@@ -275,8 +388,14 @@ main() {
         exit 1
     fi
 
+    if [[ ${#golden_mismatch_repos[@]} -gt 0 ]]; then
+        echo ""
+        echo -e "${YELLOW}Some golden file comparisons failed. Run with --update-golden to update.${NC}"
+        exit 1
+    fi
+
     echo ""
-    echo -e "${GREEN}All repositories indexed successfully!${NC}"
+    echo -e "${GREEN}All repositories indexed and golden comparisons passed!${NC}"
 }
 
 main "$@"
