@@ -1,0 +1,1074 @@
+# CodeAPI - REST API Documentation
+
+This document describes all available REST API endpoints for CodeAPI.
+
+## Base URLs
+
+- **Repository Operations**: `/api/v1`
+- **Code Graph API**: `/codeapi/v1`
+
+---
+
+## Health Check Endpoints
+
+### GET /api/v1/health
+
+Check the health of the main API service.
+
+**Response:**
+```json
+{
+  "status": "healthy"
+}
+```
+
+### GET /codeapi/v1/health
+
+Check the health of the CodeAPI service.
+
+**Response:**
+```json
+{
+  "status": "healthy"
+}
+```
+
+---
+
+## Repository Operations (`/api/v1`)
+
+### POST /api/v1/buildIndex
+
+Build the code graph index for a repository.
+
+**Request:**
+```json
+{
+  "repo_name": "my-repo",
+  "use_head": false
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `repo_name` | string | Yes | Name of the repository (must exist in source.yaml) |
+| `use_head` | boolean | No | Use git HEAD version instead of working directory |
+
+**Response:**
+```json
+{
+  "repo_name": "my-repo",
+  "status": "completed",
+  "message": "Repository indexed successfully"
+}
+```
+
+---
+
+### POST /api/v1/indexFile
+
+Index specific files through all registered processors.
+
+**Request:**
+```json
+{
+  "repo_name": "my-repo",
+  "relative_paths": [
+    "src/main/java/com/example/Service.java",
+    "src/main/java/com/example/Controller.java"
+  ]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `repo_name` | string | Yes | Name of the repository |
+| `relative_paths` | string[] | Yes | List of file paths relative to repository root |
+
+**Response:**
+```json
+{
+  "repo_name": "my-repo",
+  "files": [
+    {
+      "relative_path": "src/main/java/com/example/Service.java",
+      "file_id": 123,
+      "file_sha": "abc123...",
+      "processors_run": ["codegraph", "embeddings"],
+      "success": true
+    },
+    {
+      "relative_path": "src/main/java/com/example/Controller.java",
+      "file_id": 124,
+      "file_sha": "def456...",
+      "processors_run": ["codegraph", "embeddings"],
+      "success": true
+    }
+  ],
+  "message": "Processed 2 file(s): 2 succeeded, 0 failed"
+}
+```
+
+---
+
+### POST /api/v1/functionDependencies
+
+Get dependencies for a specific function.
+
+**Request:**
+```json
+{
+  "repo_name": "my-repo",
+  "relative_path": "src/main/java/com/example/Service.java",
+  "function_name": "processOrder",
+  "depth": 2
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `repo_name` | string | Yes | Name of the repository |
+| `relative_path` | string | Yes | File path relative to repository root |
+| `function_name` | string | Yes | Name of the function |
+| `depth` | int | No | Depth of dependency traversal (default: 2) |
+
+---
+
+### POST /api/v1/processDirectory
+
+Process a directory for code chunking and embeddings.
+
+**Request:**
+```json
+{
+  "repo_name": "my-repo",
+  "collection_name": "my-collection"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `repo_name` | string | Yes | Name of the repository |
+| `collection_name` | string | No | Qdrant collection name (defaults to repo_name) |
+
+**Response:**
+```json
+{
+  "repo_name": "my-repo",
+  "collection_name": "my-collection",
+  "total_chunks": 150,
+  "success": true,
+  "message": "Directory processed successfully"
+}
+```
+
+---
+
+### POST /api/v1/searchSimilarCode
+
+Search for similar code using a code snippet.
+
+**Request:**
+```json
+{
+  "repo_name": "my-repo",
+  "code_snippet": "public void processOrder(Order order) {\n  // ...\n}",
+  "language": "java",
+  "collection_name": "my-collection",
+  "limit": 10,
+  "include_code": true
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `repo_name` | string | Yes | Name of the repository |
+| `code_snippet` | string | Yes | Code snippet to search for |
+| `language` | string | Yes | Language: `go`, `python`, `java`, `javascript`, `typescript` |
+| `collection_name` | string | No | Qdrant collection name (defaults to repo_name) |
+| `limit` | int | No | Maximum results to return (default: 10) |
+| `include_code` | boolean | No | Include source code in results |
+
+**Response:**
+```json
+{
+  "repo_name": "my-repo",
+  "collection_name": "my-collection",
+  "query": {
+    "code_snippet": "...",
+    "language": "java",
+    "chunks_found": 3,
+    "chunks": [...]
+  },
+  "results": [
+    {
+      "chunk": {
+        "file_path": "/path/to/file.java",
+        "start_line": 10,
+        "end_line": 25,
+        "chunk_type": "method"
+      },
+      "score": 0.95,
+      "query_chunk_index": 0,
+      "code": "public void processOrder(Order order) { ... }"
+    }
+  ],
+  "success": true,
+  "message": "Search completed successfully"
+}
+```
+
+---
+
+## Code Graph API (`/codeapi/v1`)
+
+### Reader Endpoints
+
+These endpoints query the code graph for entities (files, classes, methods, fields).
+
+---
+
+#### GET /codeapi/v1/repos
+
+List all indexed repositories.
+
+**Response:**
+```json
+{
+  "repos": ["spring-petclinic", "my-service", "utils-lib"]
+}
+```
+
+---
+
+#### POST /codeapi/v1/files
+
+List files in a repository.
+
+**Request:**
+```json
+{
+  "repo_name": "spring-petclinic",
+  "limit": 20,
+  "offset": 0
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `repo_name` | string | Yes | Name of the repository |
+| `limit` | int | No | Maximum results to return |
+| `offset` | int | No | Number of results to skip |
+
+**Response:**
+```json
+{
+  "files": [
+    {
+      "id": 12345,
+      "path": "src/main/java/org/example/Service.java",
+      "language": "java",
+      "file_id": 1,
+      "repo_name": "spring-petclinic"
+    }
+  ]
+}
+```
+
+---
+
+#### POST /codeapi/v1/classes
+
+List all classes in a repository.
+
+**Request:**
+```json
+{
+  "repo_name": "spring-petclinic",
+  "limit": 20,
+  "offset": 0
+}
+```
+
+**Response:**
+```json
+{
+  "classes": [
+    {
+      "id": 67890,
+      "name": "OwnerController",
+      "file_path": "src/main/java/org/example/OwnerController.java",
+      "file_id": 1,
+      "range": {
+        "start": {"line": 15, "character": 0},
+        "end": {"line": 120, "character": 1}
+      },
+      "metadata": {
+        "annotations": [
+          "{\"name\":\"Controller\"}",
+          "{\"name\":\"RequestMapping\",\"arguments\":[\"/owners\"]}"
+        ],
+        "is_interface": false
+      }
+    }
+  ]
+}
+```
+
+---
+
+#### POST /codeapi/v1/classes/find
+
+Find classes matching specific criteria.
+
+**Request:**
+```json
+{
+  "repo_name": "spring-petclinic",
+  "name": "OwnerController",
+  "name_like": "Controller",
+  "file_path": "src/main/java/org/example/OwnerController.java",
+  "file_id": 1,
+  "limit": 10,
+  "offset": 0
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `repo_name` | string | Yes | Name of the repository |
+| `name` | string | No | Exact class name match |
+| `name_like` | string | No | Pattern match (contains) |
+| `file_path` | string | No | Exact file path |
+| `file_id` | int | No | File ID |
+| `limit` | int | No | Maximum results |
+| `offset` | int | No | Results to skip |
+
+**Response:**
+```json
+{
+  "classes": [...]
+}
+```
+
+---
+
+#### POST /codeapi/v1/methods
+
+List all methods (including class methods) in a repository.
+
+**Request:**
+```json
+{
+  "repo_name": "spring-petclinic",
+  "limit": 20,
+  "offset": 0
+}
+```
+
+**Response:**
+```json
+{
+  "methods": [
+    {
+      "id": 11111,
+      "name": "findOwner",
+      "file_path": "src/main/java/org/example/OwnerController.java",
+      "file_id": 1,
+      "range": {
+        "start": {"line": 45, "character": 4},
+        "end": {"line": 55, "character": 5}
+      },
+      "metadata": {
+        "annotations": [
+          "{\"name\":\"GetMapping\",\"arguments\":[\"/owners/{ownerId}\"]}"
+        ]
+      }
+    }
+  ]
+}
+```
+
+---
+
+#### POST /codeapi/v1/functions
+
+List top-level functions (not class methods) in a repository.
+
+**Request:**
+```json
+{
+  "repo_name": "my-go-project",
+  "limit": 20,
+  "offset": 0
+}
+```
+
+**Note:** For languages like Java where all functions are class methods, this endpoint returns an empty array.
+
+**Response:**
+```json
+{
+  "functions": [
+    {
+      "id": 22222,
+      "name": "main",
+      "file_path": "cmd/main.go",
+      "file_id": 5,
+      "range": {...}
+    }
+  ]
+}
+```
+
+---
+
+#### POST /codeapi/v1/methods/find
+
+Find methods matching specific criteria.
+
+**Request:**
+```json
+{
+  "repo_name": "spring-petclinic",
+  "name": "findOwner",
+  "name_like": "find",
+  "class_name": "OwnerController",
+  "class_id": 67890,
+  "file_path": "src/main/java/org/example/OwnerController.java",
+  "file_id": 1,
+  "limit": 10,
+  "offset": 0
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `repo_name` | string | Yes | Name of the repository |
+| `name` | string | No | Exact method name match |
+| `name_like` | string | No | Pattern match (contains) |
+| `class_name` | string | No | Filter by class name |
+| `class_id` | int | No | Filter by class ID |
+| `file_path` | string | No | Filter by file path |
+| `file_id` | int | No | Filter by file ID |
+| `limit` | int | No | Maximum results |
+| `offset` | int | No | Results to skip |
+
+**Response:**
+```json
+{
+  "methods": [...]
+}
+```
+
+---
+
+#### POST /codeapi/v1/class
+
+Get a specific class by ID.
+
+**Request:**
+```json
+{
+  "repo_name": "spring-petclinic",
+  "class_id": 67890,
+  "include_methods": true,
+  "include_fields": true
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `repo_name` | string | Yes | Name of the repository |
+| `class_id` | int | Yes | Class node ID |
+| `include_methods` | boolean | No | Include class methods in response |
+| `include_fields` | boolean | No | Include class fields in response |
+
+**Response:**
+```json
+{
+  "class": {
+    "id": 67890,
+    "name": "OwnerController",
+    "file_path": "src/main/java/org/example/OwnerController.java",
+    "file_id": 1,
+    "range": {...},
+    "methods": [...],
+    "fields": [...]
+  }
+}
+```
+
+---
+
+#### POST /codeapi/v1/method
+
+Get a specific method by ID.
+
+**Request:**
+```json
+{
+  "repo_name": "spring-petclinic",
+  "method_id": 11111
+}
+```
+
+**Response:**
+```json
+{
+  "method": {
+    "id": 11111,
+    "name": "findOwner",
+    "file_path": "src/main/java/org/example/OwnerController.java",
+    "file_id": 1,
+    "range": {...}
+  }
+}
+```
+
+---
+
+#### POST /codeapi/v1/class/methods
+
+Get all methods belonging to a class.
+
+**Request:**
+```json
+{
+  "repo_name": "spring-petclinic",
+  "class_id": 67890
+}
+```
+
+**Response:**
+```json
+{
+  "methods": [
+    {
+      "id": 11111,
+      "name": "findOwner",
+      ...
+    },
+    {
+      "id": 11112,
+      "name": "createOwner",
+      ...
+    }
+  ]
+}
+```
+
+---
+
+#### POST /codeapi/v1/class/fields
+
+Get all fields belonging to a class.
+
+**Request:**
+```json
+{
+  "repo_name": "spring-petclinic",
+  "class_id": 67890
+}
+```
+
+**Response:**
+```json
+{
+  "fields": [
+    {
+      "id": 33333,
+      "name": "ownerRepository",
+      "type": "OwnerRepository",
+      "range": {...}
+    }
+  ]
+}
+```
+
+---
+
+### Analyzer Endpoints
+
+These endpoints perform graph traversals and analysis.
+
+---
+
+#### POST /codeapi/v1/callgraph
+
+Get the call graph for a function.
+
+**Request:**
+```json
+{
+  "repo_name": "spring-petclinic",
+  "function_id": 11111,
+  "function_name": "findOwner",
+  "class_name": "OwnerController",
+  "file_path": "src/main/java/org/example/OwnerController.java",
+  "direction": "outgoing",
+  "max_depth": 3,
+  "include_external": false
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `repo_name` | string | Yes | Name of the repository |
+| `function_id` | int | No* | Function node ID |
+| `function_name` | string | No* | Function name (requires file_path or class_name) |
+| `class_name` | string | No | Class containing the function |
+| `file_path` | string | No | File containing the function |
+| `direction` | string | No | `outgoing` (callees), `incoming` (callers), or `both` (default: `outgoing`) |
+| `max_depth` | int | No | Maximum traversal depth (default: 3) |
+| `include_external` | boolean | No | Include external package calls |
+
+*Either `function_id` or `function_name` is required.
+
+**Response:**
+```json
+{
+  "call_graph": {
+    "root": {
+      "id": 11111,
+      "name": "findOwner",
+      "class_name": "OwnerController",
+      "file_path": "...",
+      "depth": 0
+    },
+    "nodes": {
+      "11111": {...},
+      "44444": {...}
+    },
+    "edges": [
+      {
+        "caller_id": 11111,
+        "callee_id": 44444,
+        "call_site": {
+          "file_path": "...",
+          "range": {...}
+        }
+      }
+    ],
+    "direction": "outgoing",
+    "max_depth": 3,
+    "truncated": false
+  }
+}
+```
+
+---
+
+#### POST /codeapi/v1/callers
+
+Get functions that call a specific function (incoming call graph).
+
+**Request:**
+```json
+{
+  "repo_name": "spring-petclinic",
+  "function_id": 11111,
+  "max_depth": 3
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `repo_name` | string | Yes | Name of the repository |
+| `function_id` | int | Yes | Function node ID |
+| `max_depth` | int | No | Maximum traversal depth (default: 3) |
+
+**Response:**
+```json
+{
+  "call_graph": {...}
+}
+```
+
+---
+
+#### POST /codeapi/v1/callees
+
+Get functions called by a specific function (outgoing call graph).
+
+**Request:**
+```json
+{
+  "repo_name": "spring-petclinic",
+  "function_id": 11111,
+  "max_depth": 3
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `repo_name` | string | Yes | Name of the repository |
+| `function_id` | int | Yes | Function node ID |
+| `max_depth` | int | No | Maximum traversal depth (default: 3) |
+
+**Response:**
+```json
+{
+  "call_graph": {...}
+}
+```
+
+---
+
+#### POST /codeapi/v1/data/dependents
+
+Get nodes that depend on a value (data flow analysis).
+
+**Request:**
+```json
+{
+  "repo_name": "spring-petclinic",
+  "node_id": 55555,
+  "variable_name": "owner",
+  "file_path": "src/main/java/org/example/OwnerController.java",
+  "max_depth": 5,
+  "include_indirect": true
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `repo_name` | string | Yes | Name of the repository |
+| `node_id` | int | No* | Node ID |
+| `variable_name` | string | No* | Variable name (requires file_path) |
+| `file_path` | string | No | File containing the variable |
+| `max_depth` | int | No | Maximum traversal depth |
+| `include_indirect` | boolean | No | Include transitive dependencies |
+
+*Either `node_id` or `variable_name` is required.
+
+**Response:**
+```json
+{
+  "dependency_graph": {
+    "root": {...},
+    "nodes": {...},
+    "edges": [
+      {
+        "source_id": 55555,
+        "target_id": 66666,
+        "flow_type": "assignment"
+      }
+    ],
+    "direction": "outgoing",
+    "truncated": false
+  }
+}
+```
+
+---
+
+#### POST /codeapi/v1/data/sources
+
+Get nodes that contribute to a value (backward data flow).
+
+**Request:**
+```json
+{
+  "repo_name": "spring-petclinic",
+  "node_id": 55555,
+  "max_depth": 5,
+  "include_indirect": true
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `repo_name` | string | Yes | Name of the repository |
+| `node_id` | int | Yes | Node ID |
+| `max_depth` | int | No | Maximum traversal depth |
+| `include_indirect` | boolean | No | Include transitive sources |
+
+**Response:**
+```json
+{
+  "dependency_graph": {...}
+}
+```
+
+---
+
+#### POST /codeapi/v1/impact
+
+Perform impact analysis for a code element.
+
+**Request:**
+```json
+{
+  "repo_name": "spring-petclinic",
+  "node_id": 11111,
+  "name": "findOwner",
+  "node_type": "function",
+  "file_path": "src/main/java/org/example/OwnerController.java",
+  "max_depth": 3,
+  "include_call_graph": true,
+  "include_data_flow": true
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `repo_name` | string | Yes | Name of the repository |
+| `node_id` | int | No* | Node ID |
+| `name` | string | No* | Element name (requires file_path and node_type) |
+| `node_type` | string | No | Type: `function`, `class`, `field`, `variable` |
+| `file_path` | string | No | File containing the element |
+| `max_depth` | int | No | Maximum traversal depth (default: 3) |
+| `include_call_graph` | boolean | No | Include call graph in analysis |
+| `include_data_flow` | boolean | No | Include data flow in analysis |
+
+*Either `node_id` or `name` is required.
+
+**Response:**
+```json
+{
+  "impact": {...}
+}
+```
+
+---
+
+#### POST /codeapi/v1/inheritance
+
+Get the inheritance hierarchy for a class.
+
+**Request:**
+```json
+{
+  "repo_name": "spring-petclinic",
+  "class_id": 67890
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `repo_name` | string | Yes | Name of the repository |
+| `class_id` | int | Yes | Class node ID |
+
+**Response:**
+```json
+{
+  "inheritance_tree": {
+    "root": {
+      "id": 67890,
+      "name": "OwnerController",
+      "file_path": "...",
+      "parents": [...],
+      "children": [...],
+      "depth": 0
+    },
+    "nodes": {...},
+    "max_depth": 3
+  }
+}
+```
+
+---
+
+#### POST /codeapi/v1/field/accessors
+
+Get methods that access a specific field.
+
+**Request:**
+```json
+{
+  "repo_name": "spring-petclinic",
+  "field_id": 33333,
+  "class_name": "OwnerController",
+  "field_name": "ownerRepository"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `repo_name` | string | Yes | Name of the repository |
+| `field_id` | int | No* | Field node ID |
+| `class_name` | string | No* | Class containing the field |
+| `field_name` | string | No* | Field name |
+
+*Either `field_id` or (`class_name` and `field_name`) is required.
+
+**Response:**
+```json
+{
+  "field_accessors": {...}
+}
+```
+
+---
+
+### Raw Cypher Endpoints
+
+These endpoints allow executing raw Neo4j Cypher queries.
+
+---
+
+#### POST /codeapi/v1/cypher
+
+Execute a read-only Cypher query.
+
+**Request:**
+```json
+{
+  "query": "MATCH (c:Class {name: $name}) RETURN c",
+  "params": {
+    "name": "OwnerController"
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `query` | string | Yes | Cypher query (read-only) |
+| `params` | object | No | Query parameters |
+
+**Response:**
+```json
+{
+  "results": [
+    {
+      "c": {
+        "id": 67890,
+        "name": "OwnerController",
+        ...
+      }
+    }
+  ]
+}
+```
+
+---
+
+#### POST /codeapi/v1/cypher/write
+
+Execute a write Cypher query.
+
+**Request:**
+```json
+{
+  "query": "MATCH (c:Class {id: $id}) SET c.custom_field = $value RETURN c",
+  "params": {
+    "id": 67890,
+    "value": "custom_value"
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `query` | string | Yes | Cypher query (write) |
+| `params` | object | No | Query parameters |
+
+**Response:**
+```json
+{
+  "results": [...]
+}
+```
+
+---
+
+## Error Responses
+
+All endpoints return errors in the following format:
+
+```json
+{
+  "error": "Error message",
+  "details": "Additional error details (optional)"
+}
+```
+
+### HTTP Status Codes
+
+| Status Code | Description |
+|-------------|-------------|
+| 200 | Success |
+| 400 | Bad Request - Invalid parameters |
+| 404 | Not Found - Repository or entity not found |
+| 500 | Internal Server Error |
+| 503 | Service Unavailable - Required service not available |
+
+---
+
+## Common Types
+
+### Range
+
+Represents a position range in source code:
+
+```json
+{
+  "start": {
+    "line": 10,
+    "character": 0
+  },
+  "end": {
+    "line": 25,
+    "character": 1
+  }
+}
+```
+
+### Node IDs
+
+All entities have unique `id` fields (int64) that can be used to reference them in subsequent API calls.
+
+### File IDs
+
+The `file_id` field is a repository-scoped identifier for files, separate from the global node `id`.
+
+### Metadata
+
+All entity types (classes, methods, fields, files) include an optional `metadata` field containing additional attributes extracted during parsing. This field is only present when metadata exists for the entity.
+
+**Common metadata fields:**
+
+| Field | Description | Applicable To |
+|-------|-------------|---------------|
+| `annotations` | Array of JSON-encoded annotation objects | Classes, Methods (Java) |
+| `is_interface` | Boolean indicating if the class is an interface | Classes (Java) |
+| `is_record` | Boolean indicating if the class is a record | Classes (Java) |
+| `is_enum` | Boolean indicating if the class is an enum | Classes (Java) |
+| `is_constructor` | Boolean indicating if the method is a constructor | Methods (Java) |
+
+**Annotation format:**
+
+Annotations are stored as JSON strings with the following structure:
+
+```json
+{
+  "name": "GetMapping",
+  "arguments": ["/owners/{ownerId}"]
+}
+```
+
+For annotations without arguments:
+```json
+{
+  "name": "Override"
+}
+```
+
+**Example with metadata:**
+
+```json
+{
+  "id": 12345,
+  "name": "OwnerController",
+  "file_path": "src/main/java/org/example/OwnerController.java",
+  "file_id": 1,
+  "range": {...},
+  "metadata": {
+    "annotations": [
+      "{\"name\":\"RestController\"}",
+      "{\"name\":\"RequestMapping\",\"arguments\":[\"/api/owners\"]}"
+    ]
+  }
+}
+```

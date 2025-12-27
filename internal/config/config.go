@@ -29,6 +29,7 @@ type App struct {
 	GCThreshold                 int64  `yaml:"gc_threshold,omitempty"`
 	NumFileThreads              int    `yaml:"num_file_threads,omitempty"`
 	MaxConcurrentFileProcessing int    `yaml:"max_concurrent_file_processing,omitempty"`
+	DebugHTTP                   bool   `yaml:"debug_http,omitempty"` // Log full request/response bodies
 }
 
 // LanguageServersConfig holds paths to language server executables

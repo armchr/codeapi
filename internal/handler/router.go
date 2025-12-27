@@ -1,21 +1,36 @@
 package handler
 
 import (
+	"bytes"
+	"io"
 	"net/http"
 	"runtime/debug"
+	"time"
 
+	"github.com/armchr/codeapi/internal/config"
 	"github.com/armchr/codeapi/internal/controller"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
 
-func SetupRouter(repoController *controller.RepoController, codeAPIController *controller.CodeAPIController, logger *zap.Logger) *gin.Engine {
+// responseWriter wraps gin.ResponseWriter to capture the response body
+type responseWriter struct {
+	gin.ResponseWriter
+	body *bytes.Buffer
+}
+
+func (w *responseWriter) Write(b []byte) (int, error) {
+	w.body.Write(b)
+	return w.ResponseWriter.Write(b)
+}
+
+func SetupRouter(repoController *controller.RepoController, codeAPIController *controller.CodeAPIController, cfg *config.Config, logger *zap.Logger) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 
 	router := gin.New()
 	router.Use(CustomRecoveryMiddleware(logger))
-	router.Use(LoggerMiddleware(logger))
+	router.Use(LoggerMiddleware(cfg.App.DebugHTTP, logger))
 
 	v1 := router.Group("/api/v1")
 	{
@@ -77,14 +92,79 @@ func SetupRouter(repoController *controller.RepoController, codeAPIController *c
 	return router
 }
 
-func LoggerMiddleware(logger *zap.Logger) gin.HandlerFunc {
+func LoggerMiddleware(debugHTTP bool, logger *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		logger.Info("HTTP Request",
-			zap.String("method", c.Request.Method),
-			zap.String("path", c.Request.URL.Path),
-			zap.String("client_ip", c.ClientIP()),
-		)
+		start := time.Now()
+
+		var requestBody []byte
+		var responseBody *bytes.Buffer
+
+		if debugHTTP {
+			// Read request body for debug logging
+			if c.Request.Body != nil {
+				requestBody, _ = io.ReadAll(c.Request.Body)
+				// Restore the body for the handler
+				c.Request.Body = io.NopCloser(bytes.NewBuffer(requestBody))
+			}
+
+			// Log request with body
+			requestFields := []zap.Field{
+				zap.String("method", c.Request.Method),
+				zap.String("path", c.Request.URL.Path),
+				zap.String("client_ip", c.ClientIP()),
+			}
+			if len(requestBody) > 0 && len(requestBody) <= 10000 {
+				requestFields = append(requestFields, zap.String("request_body", string(requestBody)))
+			} else if len(requestBody) > 10000 {
+				requestFields = append(requestFields, zap.String("request_body", string(requestBody[:10000])+"... (truncated)"))
+			}
+			logger.Info("HTTP Request", requestFields...)
+
+			// Wrap response writer to capture response body
+			responseBody = &bytes.Buffer{}
+			writer := &responseWriter{
+				ResponseWriter: c.Writer,
+				body:           responseBody,
+			}
+			c.Writer = writer
+		} else {
+			// Basic request logging without body
+			logger.Info("HTTP Request",
+				zap.String("method", c.Request.Method),
+				zap.String("path", c.Request.URL.Path),
+				zap.String("client_ip", c.ClientIP()),
+			)
+		}
+
+		// Process request
 		c.Next()
+
+		// Calculate duration
+		duration := time.Since(start)
+
+		if debugHTTP {
+			// Log response with body
+			responseFields := []zap.Field{
+				zap.String("method", c.Request.Method),
+				zap.String("path", c.Request.URL.Path),
+				zap.Int("status", c.Writer.Status()),
+				zap.Duration("duration", duration),
+			}
+			if responseBody != nil && responseBody.Len() > 0 && responseBody.Len() <= 10000 {
+				responseFields = append(responseFields, zap.String("response_body", responseBody.String()))
+			} else if responseBody != nil && responseBody.Len() > 10000 {
+				responseFields = append(responseFields, zap.String("response_body", responseBody.String()[:10000]+"... (truncated)"))
+			}
+			logger.Info("HTTP Response", responseFields...)
+		} else {
+			// Basic response logging without body
+			logger.Info("HTTP Response",
+				zap.String("method", c.Request.Method),
+				zap.String("path", c.Request.URL.Path),
+				zap.Int("status", c.Writer.Status()),
+				zap.Duration("duration", duration),
+			)
+		}
 	}
 }
 

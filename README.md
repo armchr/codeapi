@@ -1259,6 +1259,10 @@ Java LSP client automatically detects external dependencies from:
 
 Java annotations are automatically extracted and stored in the `metadata` field of Class and Function nodes. This enables querying code by framework-specific annotations (e.g., Spring Boot `@RestController`, `@GetMapping`).
 
+**API Access:**
+
+Metadata is exposed in all Code Graph API responses (`/codeapi/v1/classes`, `/codeapi/v1/methods`, etc.). See [API.md](API.md) for complete documentation.
+
 **How Annotations Are Captured:**
 
 Annotations are extracted from classes, interfaces, records, enums, methods, and constructors. Each annotation is serialized as a JSON string containing:

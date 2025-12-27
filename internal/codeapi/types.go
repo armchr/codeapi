@@ -50,6 +50,9 @@ type ClassInfo struct {
 	Range    base.Range
 	Language string
 
+	// Metadata contains additional attributes (e.g., annotations, modifiers)
+	Metadata map[string]any `json:"metadata,omitempty"`
+
 	// Populated on demand
 	Methods []*MethodInfo
 	Fields  []*FieldInfo
@@ -81,6 +84,9 @@ type MethodInfo struct {
 	IsConstructor bool
 	IsStatic      bool
 	Visibility    Visibility
+
+	// Metadata contains additional attributes (e.g., annotations, modifiers)
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
 // FieldInfo contains information about a class field
@@ -92,6 +98,9 @@ type FieldInfo struct {
 	Range      base.Range
 	Visibility Visibility
 	IsStatic   bool
+
+	// Metadata contains additional attributes (e.g., annotations, modifiers)
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
 // ParameterInfo contains information about a function parameter
@@ -109,6 +118,9 @@ type FileInfo struct {
 	Language string
 	FileID   int32
 	RepoName string
+
+	// Metadata contains additional attributes
+	Metadata map[string]any `json:"metadata,omitempty"`
 
 	// Populated on demand
 	Classes   []*ClassInfo

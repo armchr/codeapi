@@ -6,6 +6,11 @@ bin/
 *.so
 *.dylib
 
+assets/
+!assets/*.gz
+
+*.tree
+
 # Build output
 /codeapi
 /run_eval

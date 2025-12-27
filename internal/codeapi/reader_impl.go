@@ -185,23 +185,35 @@ func (r *repoReaderImpl) ListClasses(ctx context.Context, limit, offset int) ([]
 }
 
 func (r *repoReaderImpl) FindClasses(ctx context.Context, filter ClassFilter) ([]*ClassInfo, error) {
+	// Join through FileScope to filter by repo (only FileScope has repo field)
 	query := `
-		MATCH (c:Class)
-		WHERE c.repo = $repo
+		MATCH (file:FileScope {repo: $repo})
+		MATCH (c:Class {fileId: file.fileId})
 	`
 	params := map[string]any{"repo": r.repoName}
 
+	conditions := []string{}
 	if filter.Name != "" {
-		query += " AND c.name = $name"
+		conditions = append(conditions, "c.name = $name")
 		params["name"] = filter.Name
 	}
 	if filter.NameLike != "" {
-		query += " AND c.name CONTAINS $nameLike"
+		conditions = append(conditions, "c.name CONTAINS $nameLike")
 		params["nameLike"] = filter.NameLike
 	}
 	if filter.FileID != nil {
-		query += " AND c.fileId = $fileId"
+		conditions = append(conditions, "c.fileId = $fileId")
 		params["fileId"] = *filter.FileID
+	}
+
+	if len(conditions) > 0 {
+		query += " WHERE "
+		for i, cond := range conditions {
+			if i > 0 {
+				query += " AND "
+			}
+			query += cond
+		}
 	}
 
 	query += " RETURN c ORDER BY c.name"
@@ -286,32 +298,68 @@ func (r *repoReaderImpl) ListMethods(ctx context.Context, limit, offset int) ([]
 }
 
 func (r *repoReaderImpl) ListFunctions(ctx context.Context, limit, offset int) ([]*MethodInfo, error) {
+	r.logger.Debug("ListFunctions called",
+		zap.String("repo", r.repoName),
+		zap.Int("limit", limit),
+		zap.Int("offset", offset))
+
 	isMethod := false
-	return r.FindMethods(ctx, MethodFilter{IsMethod: &isMethod, Limit: limit, Offset: offset})
+	results, err := r.FindMethods(ctx, MethodFilter{IsMethod: &isMethod, Limit: limit, Offset: offset})
+
+	r.logger.Debug("ListFunctions completed",
+		zap.String("repo", r.repoName),
+		zap.Int("result_count", len(results)),
+		zap.Error(err))
+
+	return results, err
 }
 
 func (r *repoReaderImpl) FindMethods(ctx context.Context, filter MethodFilter) ([]*MethodInfo, error) {
+	r.logger.Debug("FindMethods called",
+		zap.String("repo", r.repoName),
+		zap.Any("filter", filter))
+
+	// Join through FileScope to filter by repo (only FileScope has repo field)
 	query := `
-		MATCH (m:Function)
-		WHERE m.repo = $repo
+		MATCH (file:FileScope {repo: $repo})
+		MATCH (m:Function {fileId: file.fileId})
 	`
 	params := map[string]any{"repo": r.repoName}
 
+	conditions := []string{}
 	if filter.Name != "" {
-		query += " AND m.name = $name"
+		conditions = append(conditions, "m.name = $name")
 		params["name"] = filter.Name
 	}
 	if filter.NameLike != "" {
-		query += " AND m.name CONTAINS $nameLike"
+		conditions = append(conditions, "m.name CONTAINS $nameLike")
 		params["nameLike"] = filter.NameLike
 	}
 	if filter.FileID != nil {
-		query += " AND m.fileId = $fileId"
+		conditions = append(conditions, "m.fileId = $fileId")
 		params["fileId"] = *filter.FileID
 	}
 	if filter.ClassID != nil {
-		query += " AND EXISTS { MATCH (c:Class {id: $classId})-[:CONTAINS]->(m) }"
+		conditions = append(conditions, "EXISTS { MATCH (c:Class {id: $classId})-[:CONTAINS]->(m) }")
 		params["classId"] = int64(*filter.ClassID)
+	}
+	// Filter by IsMethod: true = methods only (contained by Class), false = functions only (not contained by Class)
+	if filter.IsMethod != nil {
+		if *filter.IsMethod {
+			conditions = append(conditions, "EXISTS { MATCH (c:Class)-[:CONTAINS]->(m) }")
+		}/* else {
+			conditions = append(conditions, "NOT EXISTS { MATCH (c:Class)-[:CONTAINS]->(m) }")
+		}*/
+	}
+
+	if len(conditions) > 0 {
+		query += " WHERE "
+		for i, cond := range conditions {
+			if i > 0 {
+				query += " AND "
+			}
+			query += cond
+		}
 	}
 
 	query += " RETURN m ORDER BY m.name"
@@ -320,10 +368,18 @@ func (r *repoReaderImpl) FindMethods(ctx context.Context, filter MethodFilter) (
 		query += fmt.Sprintf(" LIMIT %d", filter.Limit)
 	}
 
+	r.logger.Debug("FindMethods executing query",
+		zap.String("query", query),
+		zap.Any("params", params))
+
 	records, err := r.graph.ExecuteRead(ctx, query, params)
 	if err != nil {
+		r.logger.Error("FindMethods query failed", zap.Error(err))
 		return nil, fmt.Errorf("failed to find methods: %w", err)
 	}
+
+	r.logger.Debug("FindMethods query completed",
+		zap.Int("record_count", len(records)))
 
 	return r.recordsToMethodInfos(records, "m")
 }
@@ -367,19 +423,31 @@ func (r *repoReaderImpl) FindMethodByName(ctx context.Context, methodName string
 // --- Field Operations ---
 
 func (r *repoReaderImpl) FindFields(ctx context.Context, filter FieldFilter) ([]*FieldInfo, error) {
+	// Join through FileScope to filter by repo (only FileScope has repo field)
 	query := `
-		MATCH (f:Field)
-		WHERE f.repo = $repo
+		MATCH (file:FileScope {repo: $repo})
+		MATCH (f:Field {fileId: file.fileId})
 	`
 	params := map[string]any{"repo": r.repoName}
 
+	conditions := []string{}
 	if filter.Name != "" {
-		query += " AND f.name = $name"
+		conditions = append(conditions, "f.name = $name")
 		params["name"] = filter.Name
 	}
 	if filter.ClassID != nil {
-		query += " AND EXISTS { MATCH (c:Class {id: $classId})-[:CONTAINS]->(f) }"
+		conditions = append(conditions, "EXISTS { MATCH (c:Class {id: $classId})-[:CONTAINS]->(f) }")
 		params["classId"] = int64(*filter.ClassID)
+	}
+
+	if len(conditions) > 0 {
+		query += " WHERE "
+		for i, cond := range conditions {
+			if i > 0 {
+				query += " AND "
+			}
+			query += cond
+		}
 	}
 
 	query += " RETURN f ORDER BY f.name"
@@ -489,6 +557,8 @@ func (r *repoReaderImpl) recordsToFileInfos(records []map[string]any) ([]*FileIn
 		if lang, ok := nodeData["language"].(string); ok {
 			file.Language = lang
 		}
+		// Extract metadata from md_ prefixed properties
+		file.Metadata = extractMetadata(nodeData)
 
 		files = append(files, file)
 	}
@@ -515,6 +585,8 @@ func (r *repoReaderImpl) recordsToClassInfos(records []map[string]any, varName s
 		if rangeStr, ok := nodeData["range"].(string); ok {
 			class.Range = parseRange(rangeStr)
 		}
+		// Extract metadata from md_ prefixed properties
+		class.Metadata = extractMetadata(nodeData)
 
 		classes = append(classes, class)
 	}
@@ -540,6 +612,8 @@ func (r *repoReaderImpl) recordsToMethodInfos(records []map[string]any, varName 
 		if rangeStr, ok := nodeData["range"].(string); ok {
 			method.Range = parseRange(rangeStr)
 		}
+		// Extract metadata from md_ prefixed properties
+		method.Metadata = extractMetadata(nodeData)
 
 		methods = append(methods, method)
 	}
@@ -564,6 +638,8 @@ func (r *repoReaderImpl) recordsToFieldInfos(records []map[string]any, varName s
 		if rangeStr, ok := nodeData["range"].(string); ok {
 			field.Range = parseRange(rangeStr)
 		}
+		// Extract metadata from md_ prefixed properties
+		field.Metadata = extractMetadata(nodeData)
 
 		fields = append(fields, field)
 	}
@@ -798,4 +874,19 @@ func parseRange(s string) base.Range {
 		&r.Start.Line, &r.Start.Character,
 		&r.End.Line, &r.End.Character)
 	return r
+}
+
+// extractMetadata extracts metadata from Neo4j node properties.
+// Metadata is stored with "md_" prefix in Neo4j (e.g., "md_annotations" -> "annotations").
+func extractMetadata(nodeData map[string]any) map[string]any {
+	metadata := make(map[string]any)
+	for key, value := range nodeData {
+		if len(key) > 3 && key[:3] == "md_" {
+			metadata[key[3:]] = value
+		}
+	}
+	if len(metadata) == 0 {
+		return nil
+	}
+	return metadata
 }

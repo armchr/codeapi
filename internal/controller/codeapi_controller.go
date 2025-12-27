@@ -202,11 +202,22 @@ func (c *CodeAPIController) ListFunctions(ctx *gin.Context) {
 		return
 	}
 
+	c.logger.Debug("ListFunctions called",
+		zap.String("repo_name", req.RepoName),
+		zap.Int("limit", req.Limit),
+		zap.Int("offset", req.Offset))
+
 	functions, err := c.api.Reader().Repo(req.RepoName).ListFunctions(ctx.Request.Context(), req.Limit, req.Offset)
 	if err != nil {
+		c.logger.Error("ListFunctions failed", zap.Error(err))
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	c.logger.Debug("ListFunctions completed",
+		zap.String("repo_name", req.RepoName),
+		zap.Int("result_count", len(functions)))
+
 	ctx.JSON(http.StatusOK, gin.H{"functions": functions})
 }
 

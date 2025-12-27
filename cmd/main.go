@@ -48,8 +48,8 @@ func main() {
 
 	//logger, err := zap.NewProduction()
 	cfgZap := zap.NewProductionConfig()
-	//cfgZap.Level.SetLevel(zapcore.DebugLevel)
-	cfgZap.Level.SetLevel(zapcore.InfoLevel)
+	cfgZap.Level.SetLevel(zapcore.DebugLevel)
+	//cfgZap.Level.SetLevel(zapcore.InfoLevel)
 	cfgZap.OutputPaths = []string{"stdout", "all.log"}
 	logger, err := cfgZap.Build()
 	if err != nil {
@@ -127,7 +127,7 @@ func main() {
 		codeAPIController = controller.NewCodeAPIController(codeAPI, logger)
 	}
 
-	router := handler.SetupRouter(repoController, codeAPIController, logger)
+	router := handler.SetupRouter(repoController, codeAPIController, cfg, logger)
 
 	logger.Info("Starting server", zap.Int("port", cfg.App.Port))
 	if err := http.ListenAndServe(fmt.Sprintf(":%d", cfg.App.Port), router); err != nil {
