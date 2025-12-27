@@ -14,7 +14,7 @@ func NewLSPLanguageServer(config *config.Config, language, rootPath string, logg
 	case "go", "golang":
 		return NewGoLanguageServerClient(config, rootPath, logger)
 	case "java", "kotlin":
-		return nil, fmt.Errorf("Java/Kotlin language server not implemented yet")
+		return NewJavaLanguageServerClient(config, rootPath, logger)
 	case "csharp", "c#":
 		return NewCSharpLanguageServerClient(config, rootPath, logger)
 	case "ruby":

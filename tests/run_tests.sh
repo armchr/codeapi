@@ -184,17 +184,17 @@ run_index_build() {
 
     # Run codeapi with build-index, capturing output
     local dump_file="${LOG_DIR}/${repo_name}.dump.txt"
-    echo -e "${YELLOW}Running: ${BINARY} -build-index ${repo_name} -app ... -source ... -test-dump ...${NC}"
+    echo -e "${YELLOW}Running: ${BINARY} -build-index ${repo_name} -app ${APP_CONFIG} -source ${SOURCE_CONFIG} -test-dump ${dump_file}${NC}"
     echo -e "${YELLOW}Log file: ${log_file}${NC}"
     echo -e "${YELLOW}Dump file: ${dump_file}${NC}"
 
-    # Run the command and capture both stdout and stderr
+    # Run the command and capture both stdout and stderr to log file only
     "${BINARY}" \
         -build-index "${repo_name}" \
         -app "${APP_CONFIG}" \
         -source "${SOURCE_CONFIG}" \
-        -test-dump "${dump_file}" 2>&1 | tee "${log_file}"
-    exit_code=${PIPESTATUS[0]}
+        -test-dump "${dump_file}" > "${log_file}" 2>&1
+    exit_code=$?
 
     # Check exit code
     if [[ ${exit_code} -ne 0 ]]; then
