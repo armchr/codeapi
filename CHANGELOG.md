@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Java LSP support** with Eclipse JDT Language Server
+  - Full LSP integration for semantic analysis (call hierarchies, symbol resolution)
+  - Java LSP client (`pkg/lsp/java_client.go`) with external module detection for Maven, Gradle, and JDK dependencies
+  - Eclipse JDT.LS bundled in `assets/` folder as tar.gz archive
+  - Launch script (`scripts/javalsp.sh`) for LSP server execution
+
+- **Java annotation extraction**
+  - Annotations automatically captured from classes, interfaces, records, enums, methods, and constructors
+  - Stored as JSON strings in node metadata with `name` and `arguments` fields
+  - Supports marker annotations (`@Override`), single-value (`@GetMapping("/path")`), and multi-value (`@Size(min=1, max=50)`) annotations
+  - Enables Cypher queries to find code by framework annotations (e.g., Spring Boot controllers)
+
+### Changed
+
+- Updated `tests/run_tests.sh` to suppress codeapi log output (logs written to file only)
+- Test script now prints full command with all arguments for easier debugging
+
+### Documentation
+
+- Added Java support section to README with setup instructions
+- Added Java Annotations in Metadata section with examples and Cypher queries
+- Updated Supported Languages table with LSP server information
+
 ## [1.0.0] - 2025-01-15
 
 ### Added

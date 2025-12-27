@@ -1218,13 +1218,104 @@ make docker-compose-down
 
 ## Supported Languages
 
-| Language | Parser | Key Features |
-|----------|--------|--------------|
-| Go | tree-sitter-go | Generics, interfaces, goroutines, channels |
-| Python | tree-sitter-python | Async/await, decorators, type hints, comprehensions |
-| Java | tree-sitter-java | Records, sealed classes, pattern matching, lambdas |
-| TypeScript | tree-sitter-typescript | Generics, advanced types, decorators |
-| JavaScript | tree-sitter-javascript | ES6+, async/await, classes, arrow functions |
+| Language | Parser | LSP Server | Key Features |
+|----------|--------|------------|--------------|
+| Go | tree-sitter-go | gopls | Generics, interfaces, goroutines, channels |
+| Python | tree-sitter-python | pyright | Async/await, decorators, type hints, comprehensions |
+| Java | tree-sitter-java | Eclipse JDT.LS | Records, sealed classes, pattern matching, lambdas, annotations |
+| TypeScript | tree-sitter-typescript | typescript-language-server | Generics, advanced types, decorators |
+| JavaScript | tree-sitter-javascript | typescript-language-server | ES6+, async/await, classes, arrow functions |
+| C# | tree-sitter-c-sharp | csharp-ls | Classes, interfaces, LINQ, async/await |
+
+### Java Support
+
+Java support includes full LSP integration via [Eclipse JDT Language Server](https://github.com/eclipse-jdtls/eclipse.jdt.ls) for semantic analysis (call hierarchies, symbol resolution) combined with tree-sitter for fast syntax parsing.
+
+**Setup:**
+
+Eclipse JDT.LS is bundled in the `assets/` folder as a tar.gz archive. Extract it before first use:
+
+```bash
+cd assets
+tar -xzf jdt-language-server-*.tar.gz
+```
+
+This creates the `bin/jdtls` launcher and `plugins/` directory needed by the language server.
+
+**Configuration:**
+```yaml
+language_servers:
+  java: "${CODEAPI_ROOT}/scripts/javalsp.sh"
+```
+
+**External Module Detection:**
+Java LSP client automatically detects external dependencies from:
+- Maven local repository (`.m2/repository/`)
+- Gradle cache (`.gradle/caches/`)
+- Build output directories (`target/`, `build/`, `out/`)
+- JDK/JRE locations
+
+### Java Annotations in Metadata
+
+Java annotations are automatically extracted and stored in the `metadata` field of Class and Function nodes. This enables querying code by framework-specific annotations (e.g., Spring Boot `@RestController`, `@GetMapping`).
+
+**How Annotations Are Captured:**
+
+Annotations are extracted from classes, interfaces, records, enums, methods, and constructors. Each annotation is serialized as a JSON string containing:
+- `name`: The annotation name (e.g., `"RestController"`, `"GetMapping"`)
+- `arguments`: Optional key-value pairs for annotation arguments
+
+**Example: Spring Boot Controller**
+
+For a class like:
+```java
+@RestController
+@RequestMapping("/api/owners")
+public class OwnerController {
+
+    @GetMapping("/{id}")
+    public Owner getOwner(@PathVariable Long id) { ... }
+}
+```
+
+The metadata stored in Neo4j:
+```json
+// Class node metadata
+{
+  "annotations": [
+    "{\"name\":\"RestController\"}",
+    "{\"name\":\"RequestMapping\",\"arguments\":{\"value\":\"/api/owners\"}}"
+  ]
+}
+
+// Method node metadata
+{
+  "annotations": [
+    "{\"name\":\"GetMapping\",\"arguments\":{\"value\":\"/{id}\"}}"
+  ]
+}
+```
+
+**Querying Annotations via Cypher:**
+
+Find all REST controllers:
+```cypher
+MATCH (c:Class)
+WHERE ANY(a IN c.annotations WHERE a CONTAINS '"name":"RestController"')
+RETURN c.name, c.file_path
+```
+
+Find all methods with `@GetMapping`:
+```cypher
+MATCH (f:Function)
+WHERE ANY(a IN f.annotations WHERE a CONTAINS '"name":"GetMapping"')
+RETURN f.name, f.annotations
+```
+
+**Supported Annotation Types:**
+- Marker annotations: `@Override`, `@Repository`, `@Service`
+- Single-value annotations: `@GetMapping("/path")`, `@Query("SELECT ...")`
+- Multi-value annotations: `@Size(min = 1, max = 50)`, `@Column(name = "id", nullable = false)`
 
 ## Project Structure
 
