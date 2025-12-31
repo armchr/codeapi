@@ -1,0 +1,126 @@
+/* PetClinic JSP Frontend Styles */
+
+body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+main {
+    flex: 1;
+}
+
+/* Card styling */
+.card {
+    transition: box-shadow 0.3s ease;
+}
+
+.card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Table improvements */
+.table th {
+    background-color: #f8f9fa;
+}
+
+/* Owner card */
+.owner-card .card-title {
+    color: #0d6efd;
+}
+
+/* Pet badge */
+.pet-badge {
+    font-size: 0.85rem;
+}
+
+/* Action buttons */
+.btn-action {
+    margin-right: 0.25rem;
+}
+
+/* Search form */
+.search-form {
+    max-width: 400px;
+}
+
+/* Home page hero */
+.hero-section {
+    background: linear-gradient(135deg, #0d6efd 0%, #6610f2 100%);
+    color: white;
+    padding: 3rem 0;
+    margin: -1.5rem -1.5rem 2rem -1.5rem;
+    border-radius: 0 0 1rem 1rem;
+}
+
+.hero-section h1 {
+    font-weight: 600;
+}
+
+/* Stats cards */
+.stats-card {
+    border-left: 4px solid #0d6efd;
+}
+
+.stats-card .display-6 {
+    color: #0d6efd;
+}
+
+/* Form validation */
+.was-validated .form-control:valid,
+.form-control.is-valid {
+    border-color: #198754;
+}
+
+.was-validated .form-control:invalid,
+.form-control.is-invalid {
+    border-color: #dc3545;
+}
+
+/* Alert animations */
+.alert {
+    animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Empty state */
+.empty-state {
+    text-align: center;
+    padding: 3rem;
+    color: #6c757d;
+}
+
+.empty-state i {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+}
+
+/* Specialty badges */
+.specialty-badge {
+    margin-right: 0.25rem;
+    margin-bottom: 0.25rem;
+}
+
+/* Loading spinner */
+.loading-spinner {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 2rem;
+}
+
+/* Delete confirmation modal */
+.delete-modal .modal-header {
+    background-color: #dc3545;
+    color: white;
+}
