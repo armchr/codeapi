@@ -55,11 +55,13 @@ func (fh *FileHolder) FindNameInLine(lspClient LSPClient, name string, line int)
 	return -1
 }
 
-func (fh *FileHolder) FindNameInNextLines(lspClient LSPClient, name string, startLine, n int) int {
+// FindNameInNextLines searches for a name in the next n lines starting from startLine.
+// Returns (line, character) where the name was found, or (-1, -1) if not found.
+func (fh *FileHolder) FindNameInNextLines(lspClient LSPClient, name string, startLine, n int) (int, int) {
 	for i := startLine; i < startLine+n && i < len(fh.lineStrs); i++ {
 		if idx := fh.FindNameInLine(lspClient, name, i); idx != -1 {
-			return idx
+			return i, idx
 		}
 	}
-	return -1
+	return -1, -1
 }

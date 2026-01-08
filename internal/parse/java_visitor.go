@@ -304,10 +304,28 @@ func (jv *JavaVisitor) handleClassDeclaration(ctx context.Context, tsNode *tree_
 	}
 
 	// Extract annotations from modifiers
-	var metadata map[string]any
+	metadata := make(map[string]any)
 	annotations := jv.extractAnnotations(tsNode)
 	if len(annotations) > 0 {
-		metadata = map[string]any{"annotations": annotations}
+		metadata["annotations"] = annotations
+	}
+
+	// Extract superclass (extends)
+	superclassNode := jv.translate.TreeChildByKind(tsNode, "superclass")
+	if superclassNode != nil {
+		superclassName := jv.extractTypeName(superclassNode)
+		if superclassName != "" {
+			metadata["extends"] = superclassName
+		}
+	}
+
+	// Extract implemented interfaces
+	interfacesNode := jv.translate.TreeChildByKind(tsNode, "super_interfaces")
+	if interfacesNode != nil {
+		interfaces := jv.extractTypeList(interfacesNode)
+		if len(interfaces) > 0 {
+			metadata["implements"] = interfaces
+		}
 	}
 
 	// Pass nil for fields - we'll handle field_declarations separately
@@ -339,12 +357,19 @@ func (jv *JavaVisitor) handleInterfaceDeclaration(ctx context.Context, tsNode *t
 	}
 
 	// Extract annotations and mark as interface
-	var metadata map[string]any
+	metadata := map[string]any{"is_interface": true}
 	annotations := jv.extractAnnotations(tsNode)
 	if len(annotations) > 0 {
-		metadata = map[string]any{"annotations": annotations, "is_interface": true}
-	} else {
-		metadata = map[string]any{"is_interface": true}
+		metadata["annotations"] = annotations
+	}
+
+	// Extract extended interfaces (interface Foo extends Bar, Baz)
+	extendsNode := jv.translate.TreeChildByKind(tsNode, "extends_interfaces")
+	if extendsNode != nil {
+		extendedInterfaces := jv.extractTypeList(extendsNode)
+		if len(extendedInterfaces) > 0 {
+			metadata["extends"] = extendedInterfaces
+		}
 	}
 
 	return jv.translate.HandleClassWithMetadata(ctx, scopeID, tsNode, interfaceName, methods, nil, metadata)
@@ -695,8 +720,17 @@ func (jv *JavaVisitor) handleMethodInvocation(ctx context.Context, tsNode *tree_
 	nameNode := jv.translate.TreeChildByFieldName(tsNode, "name")
 	argumentsNode := jv.translate.TreeChildByFieldName(tsNode, "arguments")
 
+	// For chained method calls like obj.method1().method2(), the objectNode is another method_invocation.
+	// We need to traverse it first to create the FunctionCall node for the inner call,
+	// rather than trying to resolve it as a name chain (which doesn't work for method invocations).
+	if objectNode != nil && objectNode.Kind() == "method_invocation" {
+		// Traverse the inner method invocation first to create its FunctionCall node
+		jv.TraverseNode(ctx, objectNode, scopeID)
+	}
+
+	// Build name chain only for simple identifiers/field accesses, not for method invocations
 	var nameChain []*tree_sitter.Node
-	if objectNode != nil {
+	if objectNode != nil && objectNode.Kind() != "method_invocation" {
 		nameChain = append(nameChain, objectNode)
 	}
 	if nameNode != nil {
@@ -734,7 +768,12 @@ func (jv *JavaVisitor) handleObjectCreationExpression(ctx context.Context, tsNod
 		args = jv.translate.NamedChildren(argumentsNode)
 	}
 
-	return jv.translate.HandleCall(ctx, fnNameNodeID, args, scopeID, jv.translate.ToRange(tsNode))
+	// Mark this call as a constructor call for post-processing
+	metadata := map[string]any{
+		"is_constructor": true,
+	}
+
+	return jv.translate.HandleCallWithMetadata(ctx, fnNameNodeID, args, scopeID, jv.translate.ToRange(tsNode), metadata)
 }
 
 func (jv *JavaVisitor) handleAssignmentExpression(ctx context.Context, tsNode *tree_sitter.Node, scopeID ast.NodeID) ast.NodeID {
@@ -1222,6 +1261,107 @@ func (jv *JavaVisitor) handleInstanceofExpression(ctx context.Context, tsNode *t
 		return jv.translate.HandleRhsExprsWithFakeVariable(ctx, "__instanceof__", exprs, scopeID, nil)
 	}
 	return ast.InvalidNodeID
+}
+
+// extractTypeName extracts a type name from a tree-sitter node.
+// This handles superclass nodes, type_identifier, generic_type, and scoped_identifier.
+func (jv *JavaVisitor) extractTypeName(tsNode *tree_sitter.Node) string {
+	if tsNode == nil {
+		return ""
+	}
+
+	kind := tsNode.Kind()
+	switch kind {
+	case "superclass", "extends_interfaces":
+		// For superclass node, look for the type child
+		typeNode := jv.translate.TreeChildByKind(tsNode, "type_identifier")
+		if typeNode != nil {
+			return jv.translate.String(typeNode)
+		}
+		// Try generic_type (e.g., extends List<T>)
+		genericNode := jv.translate.TreeChildByKind(tsNode, "generic_type")
+		if genericNode != nil {
+			return jv.extractTypeNameFromGeneric(genericNode)
+		}
+		// Try scoped_identifier (e.g., extends com.example.BaseClass)
+		scopedNode := jv.translate.TreeChildByKind(tsNode, "scoped_identifier")
+		if scopedNode != nil {
+			return jv.translate.String(scopedNode)
+		}
+	case "type_identifier", "identifier":
+		return jv.translate.String(tsNode)
+	case "generic_type":
+		return jv.extractTypeNameFromGeneric(tsNode)
+	case "scoped_identifier":
+		return jv.translate.String(tsNode)
+	}
+
+	return ""
+}
+
+// extractTypeNameFromGeneric extracts the base type name from a generic_type node.
+// e.g., List<Owner> -> "List", Map<String, Object> -> "Map"
+func (jv *JavaVisitor) extractTypeNameFromGeneric(tsNode *tree_sitter.Node) string {
+	if tsNode == nil {
+		return ""
+	}
+
+	// Get the base type identifier
+	typeIdNode := jv.translate.TreeChildByKind(tsNode, "type_identifier")
+	if typeIdNode != nil {
+		return jv.translate.String(typeIdNode)
+	}
+
+	// Try scoped identifier for qualified generic types
+	scopedNode := jv.translate.TreeChildByKind(tsNode, "scoped_identifier")
+	if scopedNode != nil {
+		return jv.translate.String(scopedNode)
+	}
+
+	return ""
+}
+
+// extractTypeList extracts a list of type names from a super_interfaces or extends_interfaces node.
+// Java: class Foo implements Bar, Baz -> ["Bar", "Baz"]
+// Java: interface Foo extends Bar, Baz -> ["Bar", "Baz"]
+func (jv *JavaVisitor) extractTypeList(tsNode *tree_sitter.Node) []string {
+	if tsNode == nil {
+		return nil
+	}
+
+	var types []string
+
+	// Look for type_list child which contains the actual types
+	typeListNode := jv.translate.TreeChildByKind(tsNode, "type_list")
+	if typeListNode != nil {
+		tsNode = typeListNode
+	}
+
+	// Iterate through children looking for type nodes
+	for i := uint(0); i < tsNode.ChildCount(); i++ {
+		child := tsNode.Child(i)
+		if !child.IsNamed() {
+			continue
+		}
+
+		kind := child.Kind()
+		var typeName string
+
+		switch kind {
+		case "type_identifier", "identifier":
+			typeName = jv.translate.String(child)
+		case "generic_type":
+			typeName = jv.extractTypeNameFromGeneric(child)
+		case "scoped_identifier":
+			typeName = jv.translate.String(child)
+		}
+
+		if typeName != "" {
+			types = append(types, typeName)
+		}
+	}
+
+	return types
 }
 
 // HasSpecialName returns false for Java - no special naming conventions like C#

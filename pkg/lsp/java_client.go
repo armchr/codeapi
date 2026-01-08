@@ -72,10 +72,11 @@ func (t *JavaLanguageServerClient) IsExternalModule(uri string) bool {
 		return true
 	}
 
-	// JDK/JRE locations
+	// JDK/JRE locations - be careful not to match src/main/java/ which is standard Maven structure
 	if strings.Contains(uri, "/jdk") ||
 		strings.Contains(uri, "/jre") ||
-		strings.Contains(uri, "/java/") ||
+		strings.Contains(uri, "/Library/Java/") || // macOS JDK location
+		strings.Contains(uri, "/usr/lib/jvm/") ||  // Linux JDK location
 		strings.Contains(uri, "rt.jar") {
 		return true
 	}

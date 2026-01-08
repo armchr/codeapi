@@ -617,12 +617,13 @@ func strToRange(s string) base.Range {
 
 var (
 	FirstClassMetadata = map[string]bool{
-		"fake":     true,
-		"nameID":   true,
-		"return":   true,
-		"repo":     true,
-		"path":     true,
-		"language": true,
+		"fake":           true,
+		"nameID":         true,
+		"return":         true,
+		"repo":           true,
+		"path":           true,
+		"language":       true,
+		"is_constructor": true,
 	}
 )
 
@@ -1664,6 +1665,66 @@ func (cg *CodeGraph) FindClassInModule(ctx context.Context, name string, moduleN
 		"name":       name,
 		"moduleName": moduleName,
 	})
+}
+
+// FindClassesByNameInRepo finds all classes with the given name in a repository.
+// This is useful for inheritance resolution where a class may extend another class in a different file.
+func (cg *CodeGraph) FindClassesByNameInRepo(ctx context.Context, name string, repoName string) ([]*ast.Node, error) {
+	q := `MATCH (f:FileScope {repo: $repo})-[:CONTAINS]->(m:ModuleScope)-[:CONTAINS]->(c:Class {name: $name})
+	RETURN c
+	`
+
+	return cg.readNodesByQuery(ctx, "c", q, map[string]any{
+		"name": name,
+		"repo": repoName,
+	})
+}
+
+// FindAllClassesWithInheritance returns all classes in a repository that have extends or implements metadata.
+func (cg *CodeGraph) FindAllClassesWithInheritance(ctx context.Context, repoName string) ([]*ast.Node, error) {
+	q := `MATCH (f:FileScope {repo: $repo})-[:CONTAINS]->(m:ModuleScope)-[:CONTAINS]->(c:Class)
+	WHERE c.extends IS NOT NULL OR c.implements IS NOT NULL
+	RETURN c
+	`
+
+	return cg.readNodesByQuery(ctx, "c", q, map[string]any{
+		"repo": repoName,
+	})
+}
+
+// FindAllClassesInFile returns all classes in a file.
+func (cg *CodeGraph) FindAllClassesInFile(ctx context.Context, fileID int32) ([]*ast.Node, error) {
+	q := `MATCH (f:FileScope {id: $fileId})-[:CONTAINS]->(m:ModuleScope)-[:CONTAINS]->(c:Class)
+	RETURN c
+	`
+
+	return cg.readNodesByQuery(ctx, "c", q, map[string]any{
+		"fileId": fileID,
+	})
+}
+
+// FindConstructorCallsInFile returns all constructor calls (new expressions) in a file.
+// These are FunctionCall nodes with is_constructor=true metadata.
+func (cg *CodeGraph) FindConstructorCallsInFile(ctx context.Context, fileID int32) ([]*ast.Node, error) {
+	q := `MATCH (fc:FunctionCall {fileId: $fileId})
+	WHERE fc.is_constructor = true
+	RETURN fc
+	`
+
+	return cg.readNodesByQuery(ctx, "fc", q, map[string]any{
+		"fileId": fileID,
+	})
+}
+
+// GetConstructorsOfClass returns all constructors of a class.
+// These are Function nodes with is_constructor=true contained by the class.
+func (cg *CodeGraph) GetConstructorsOfClass(ctx context.Context, classID ast.NodeID) ([]*ast.Node, error) {
+	query := `
+		MATCH (c:Class {id: $classId})-[:CONTAINS]->(f:Function)
+		WHERE f.is_constructor = true
+		RETURN f
+	`
+	return cg.readNodesByQuery(ctx, "f", query, map[string]any{"classId": int64(classID)})
 }
 
 /*

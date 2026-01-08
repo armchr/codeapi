@@ -230,11 +230,17 @@ func MapToFunctionDependency(call base.CallHierarchyOutgoingCall, lspClient base
 			},
 		})
 	}
+
+	// Extract clean method name from LSP signature
+	// Java LSP returns signatures like "findByOwnerId(Long) : List<PetDto>"
+	// We need just "findByOwnerId" to match against tree-sitter parsed names
+	methodName := base.ExtractJavaMethodName(call.To.Name)
+
 	return FunctionDependency{
-		Name:          call.To.Name,
+		Name:          methodName,
 		CallLocations: callLocations,
 		Definition: FunctionDefinition{
-			Name: call.To.Name,
+			Name: methodName,
 			Location: base.Location{
 				URI: call.To.URI,
 				Range: base.Range{

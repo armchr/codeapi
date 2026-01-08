@@ -198,16 +198,17 @@ func (t *BaseClient) GetCallHierarchy(ctx context.Context, uri string, fnName st
 
 	// If fnName is provided, try to find its position in the file
 	if fnName != "" {
-		line := position.Line
+		startLine := position.Line
 		//TODO this is flawed, as the function name might just be used in a comment or string before its actual definition
 		// ideally we should parse the file to find the actual function definition
 		// but for now, we will just search in the next 50 lines from the given line
-		character := fileHolder.FindNameInNextLines(t.client, fnName, line, 50)
-		if character == -1 {
+		foundLine, foundChar := fileHolder.FindNameInNextLines(t.client, fnName, startLine, 50)
+		if foundLine == -1 {
 			t.logger.Error("function name not found in file", zap.String("uri", uri), zap.String("function_name", fnName))
 			return nil, fmt.Errorf("function name not found in file")
 		}
-		position.Character = character
+		position.Line = foundLine
+		position.Character = foundChar
 	}
 
 	params := base.CallHierarchyParams{

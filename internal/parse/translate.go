@@ -682,6 +682,12 @@ func (t *TranslateFromSyntaxTree) HandleRhs(ctx context.Context, rhs *tree_sitte
 }
 
 func (t *TranslateFromSyntaxTree) HandleCall(ctx context.Context, nameID ast.NodeID, args []*tree_sitter.Node, scopeID ast.NodeID, rng base.Range) ast.NodeID {
+	return t.HandleCallWithMetadata(ctx, nameID, args, scopeID, rng, nil)
+}
+
+// HandleCallWithMetadata creates a function call node with additional metadata.
+// This is useful for annotating special call types like constructor calls.
+func (t *TranslateFromSyntaxTree) HandleCallWithMetadata(ctx context.Context, nameID ast.NodeID, args []*tree_sitter.Node, scopeID ast.NodeID, rng base.Range, extraMetadata map[string]any) ast.NodeID {
 	if nameID == ast.InvalidNodeID {
 		return ast.InvalidNodeID
 	}
@@ -702,6 +708,12 @@ func (t *TranslateFromSyntaxTree) HandleCall(ctx context.Context, nameID ast.Nod
 	callNode.MetaData = map[string]any{
 		"nameID": fnNameNode.ID,
 	}
+
+	// Merge extra metadata if provided
+	for k, v := range extraMetadata {
+		callNode.MetaData[k] = v
+	}
+
 	t.CodeGraph.CreateFunctionCall(ctx, callNode)
 
 	for idx, arg := range args {
