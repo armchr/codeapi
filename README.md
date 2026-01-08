@@ -1231,6 +1231,20 @@ make docker-compose-down
 
 Java support includes full LSP integration via [Eclipse JDT Language Server](https://github.com/eclipse-jdtls/eclipse.jdt.ls) for semantic analysis (call hierarchies, symbol resolution) combined with tree-sitter for fast syntax parsing.
 
+**Chained Method Calls:**
+
+CodeAPI correctly parses and tracks chained method calls common in Java (fluent APIs, Stream API, repository pattern):
+
+```java
+// All method calls in the chain are captured:
+return repository.findByVetId(id)   // FunctionCall → findByVetId
+    .stream()                        // FunctionCall → stream
+    .map(this::toDto)                // FunctionCall → map
+    .collect(Collectors.toList());   // FunctionCall → collect
+```
+
+This enables accurate CALLS_FUNCTION relationship tracking for Spring Data repositories, Stream operations, and builder patterns.
+
 **Setup:**
 
 Eclipse JDT.LS is bundled in the `assets/` folder as a tar.gz archive. Extract it before first use:

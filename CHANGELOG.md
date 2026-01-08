@@ -21,6 +21,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Supports marker annotations (`@Override`), single-value (`@GetMapping("/path")`), and multi-value (`@Size(min=1, max=50)`) annotations
   - Enables Cypher queries to find code by framework annotations (e.g., Spring Boot controllers)
 
+### Fixed
+
+- **Java chained method call parsing** - Fixed `handleMethodInvocation` to recursively traverse nested method invocations
+  - Chained calls like `repository.findById(id).stream().map(this::toDto).collect(...)` now correctly create FunctionCall nodes for all methods in the chain
+  - Previously, only the outermost call (e.g., `collect`) was captured; inner calls (`findById`, `stream`, `map`) were missed
+  - Enables proper CALLS_FUNCTION relationship tracking for repository pattern and fluent API usage
+
+- **Java external module detection** - Fixed `IsExternalModule` check that incorrectly marked all Java files as external
+  - The `/java/` path check was matching standard Maven project structure (`src/main/java/...`)
+  - Changed to specific JDK location patterns (`/Library/Java/`, `/usr/lib/jvm/`) instead
+  - CALLS_FUNCTION edges are now correctly created for calls to repository interfaces and other internal project classes
+
 ### Changed
 
 - Updated `tests/run_tests.sh` to suppress codeapi log output (logs written to file only)
