@@ -1,9 +1,11 @@
 package controller
 
 import (
+	"bufio"
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -16,6 +18,7 @@ import (
 	"github.com/armchr/codeapi/internal/service/codegraph"
 	"github.com/armchr/codeapi/internal/service/llm"
 	"github.com/armchr/codeapi/internal/service/summary"
+	"github.com/armchr/codeapi/pkg/lsp/base"
 
 	"go.uber.org/zap"
 )
@@ -139,6 +142,13 @@ func (p *SummaryProcessor) ProcessFile(ctx context.Context, repo *config.Reposit
 
 	if p.currentStore == nil {
 		return fmt.Errorf("SummaryProcessor not initialized - Init must be called before ProcessFile")
+	}
+
+	// Skip files without parser support (e.g., .classpath, .project, pom.xml, ruby files)
+	if !isSupportedForSummary(fileCtx.RelativePath) {
+		p.logger.Debug("Skipping unsupported file for summarization",
+			zap.String("file", fileCtx.RelativePath))
+		return nil
 	}
 
 	p.logger.Debug("Processing file for summaries",
@@ -673,11 +683,9 @@ func (p *SummaryProcessor) buildFunctionContext(ctx context.Context, node *ast.N
 		className = containingClass.Name
 	}
 
-	// Get source code (we'd need to read from file - for now use empty)
-	// In a full implementation, you'd read the source from the file
-	sourceCode := "" // TODO: Read from file using node.Range
-
+	// Get file path and extract source code
 	filePath := p.codeGraph.GetFilePath(ctx, node.FileID)
+	sourceCode := p.extractSourceCode(repo.Path, filePath, node.Range)
 
 	return &summary.FunctionContext{
 		Name:        node.Name,
@@ -834,4 +842,68 @@ func (p *SummaryProcessor) buildFileContextFromFileCtx(
 		PackageName:       "",
 		ModuleName:        moduleName,
 	}
+}
+
+// isSupportedForSummary checks if a file has parser support for summarization
+// Files without parsers (like .classpath, .project, pom.xml, etc.) should be skipped
+func isSupportedForSummary(filePath string) bool {
+	ext := strings.ToLower(filepath.Ext(filePath))
+	switch ext {
+	case ".go", ".js", ".jsx", ".mjs", ".ts", ".tsx", ".py", ".pyw", ".java", ".cs":
+		return true
+	default:
+		return false
+	}
+}
+
+// extractSourceCode reads source code from a file for a given range.
+// It returns the source code lines from start to end (inclusive).
+// If the range is invalid or file cannot be read, returns empty string.
+func (p *SummaryProcessor) extractSourceCode(repoPath, relativePath string, rng base.Range) string {
+	if relativePath == "" {
+		return ""
+	}
+
+	fullPath := filepath.Join(repoPath, relativePath)
+
+	file, err := os.Open(fullPath)
+	if err != nil {
+		p.logger.Debug("Failed to open file for source extraction",
+			zap.String("path", fullPath),
+			zap.Error(err))
+		return ""
+	}
+	defer file.Close()
+
+	// LSP positions are 0-indexed, so line 0 is the first line
+	startLine := rng.Start.Line
+	endLine := rng.End.Line
+
+	// Sanity check
+	if startLine < 0 || endLine < startLine {
+		return ""
+	}
+
+	var lines []string
+	scanner := bufio.NewScanner(file)
+	lineNum := 0
+
+	for scanner.Scan() {
+		if lineNum >= startLine && lineNum <= endLine {
+			lines = append(lines, scanner.Text())
+		}
+		if lineNum > endLine {
+			break
+		}
+		lineNum++
+	}
+
+	if err := scanner.Err(); err != nil {
+		p.logger.Debug("Error reading file for source extraction",
+			zap.String("path", fullPath),
+			zap.Error(err))
+		return ""
+	}
+
+	return strings.Join(lines, "\n")
 }
