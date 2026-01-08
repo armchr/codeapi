@@ -25,7 +25,7 @@ func (w *responseWriter) Write(b []byte) (int, error) {
 	return w.ResponseWriter.Write(b)
 }
 
-func SetupRouter(repoController *controller.RepoController, codeAPIController *controller.CodeAPIController, cfg *config.Config, logger *zap.Logger) *gin.Engine {
+func SetupRouter(repoController *controller.RepoController, codeAPIController *controller.CodeAPIController, summaryController *controller.SummaryController, cfg *config.Config, logger *zap.Logger) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 
 	router := gin.New()
@@ -86,6 +86,24 @@ func SetupRouter(repoController *controller.RepoController, codeAPIController *c
 			codeAPI.GET("/health", func(c *gin.Context) {
 				c.JSON(200, gin.H{"status": "healthy"})
 			})
+		}
+	}
+
+	// Summary query routes
+	if summaryController != nil {
+		summaryAPI := router.Group("/codeapi/v1/summaries")
+		{
+			// Get all summaries for a file (optionally filtered by entity_type)
+			summaryAPI.POST("/file", summaryController.GetFileSummaries)
+
+			// Get file-level summary
+			summaryAPI.POST("/file/summary", summaryController.GetFileSummary)
+
+			// Get a specific function or class summary
+			summaryAPI.POST("/entity", summaryController.GetEntitySummary)
+
+			// Get summary statistics for a repository
+			summaryAPI.POST("/stats", summaryController.GetSummaryStats)
 		}
 	}
 

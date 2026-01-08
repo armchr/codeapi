@@ -68,6 +68,29 @@ func (rs *LspService) getLanguageServerClient(repoName string) (base.LSPClient, 
 	return client, nil
 }
 
+// PrepareLanguageServer initializes the language server for a repository upfront.
+// This is useful for index building where we want to ensure the LSP is ready
+// before processing begins, avoiding initialization delays during post-processing.
+// If the language server is already initialized, this is a no-op.
+func (rs *LspService) PrepareLanguageServer(repoName string) error {
+	// Check if already initialized
+	if _, exists := rs.lspClients.Get(repoName); exists {
+		rs.logger.Debug("Language server already initialized", zap.String("repo_name", repoName))
+		return nil
+	}
+
+	rs.logger.Info("Pre-initializing language server for repository", zap.String("repo_name", repoName))
+
+	client, err := rs.prepareLanguageServer(repoName)
+	if err != nil {
+		return fmt.Errorf("failed to prepare language server for %s: %w", repoName, err)
+	}
+
+	rs.lspClients.Set(repoName, client)
+	rs.logger.Info("Language server initialized successfully", zap.String("repo_name", repoName))
+	return nil
+}
+
 func (rs *LspService) getSymbolsOfType(ctx context.Context, lspClient base.LSPClient, fileUri string, symType int) ([]interface{}, error) {
 	lspClient.DidOpenFile(ctx, fileUri)
 

@@ -1,14 +1,17 @@
 package init
 
 import (
+	"context"
+	"fmt"
+
 	"github.com/armchr/codeapi/internal/config"
 	"github.com/armchr/codeapi/internal/controller"
 	"github.com/armchr/codeapi/internal/db"
 	"github.com/armchr/codeapi/internal/service"
 	"github.com/armchr/codeapi/internal/service/codegraph"
+	"github.com/armchr/codeapi/internal/service/llm"
+	"github.com/armchr/codeapi/internal/service/summary"
 	"github.com/armchr/codeapi/internal/service/vector"
-	"context"
-	"fmt"
 
 	"go.uber.org/zap"
 )
@@ -25,6 +28,10 @@ type ServiceContainer struct {
 	ChunkService   *vector.CodeChunkService
 	RepoService    *service.RepoService
 
+	// Summary services
+	LLMService    llm.LLMService
+	PromptManager *summary.PromptManager
+
 	// Processors
 	Processors []controller.FileProcessor
 
@@ -37,6 +44,7 @@ type ServiceInitOptions struct {
 	EnableCodeGraph   bool
 	EnableEmbeddings  bool
 	EnableRepoService bool
+	EnableSummary     bool // Enable hierarchical code summarization
 
 	// For index building CLI mode
 	RequireMySQL bool // If true, fail if MySQL is not available
@@ -87,6 +95,19 @@ func NewServiceContainer(cfg *config.Config, opts ServiceInitOptions, logger *za
 		logger.Info("Vector services initialized")
 	}
 
+	// Initialize Summary services if enabled
+	if opts.EnableSummary {
+		container.LLMService, container.PromptManager, err = initSummaryServices(cfg, logger)
+		if err != nil {
+			// Summary is optional, log warning but don't fail
+			logger.Warn("Summary services initialization failed, summarization will be disabled", zap.Error(err))
+		} else {
+			logger.Info("Summary services initialized",
+				zap.String("llm_provider", container.LLMService.Name()),
+				zap.String("llm_model", container.LLMService.ModelName()))
+		}
+	}
+
 	return container, nil
 }
 
@@ -109,6 +130,35 @@ func (sc *ServiceContainer) InitProcessors(cfg *config.Config) error {
 		embeddingProcessor := controller.NewEmbeddingProcessor(sc.ChunkService, sc.logger)
 		processors = append(processors, embeddingProcessor)
 		sc.logger.Info("Embedding processor added to pipeline")
+	}
+
+	// Add Summary processor if LLM service is available
+	// Note: Summary processor requires CodeGraph to be available for entity queries
+	if sc.LLMService != nil && sc.PromptManager != nil && sc.CodeGraph != nil && sc.MySQLConn != nil {
+		summaryConfig := &controller.SummaryProcessorConfig{
+			Enabled:      cfg.IndexBuilding.EnableSummary,
+			WorkerCount:  cfg.Summary.WorkerCount,
+			SkipIfExists: cfg.Summary.SkipIfExists,
+			BatchSize:    cfg.Summary.BatchSize,
+		}
+		if summaryConfig.WorkerCount <= 0 {
+			summaryConfig.WorkerCount = 4
+		}
+		if summaryConfig.BatchSize <= 0 {
+			summaryConfig.BatchSize = 50
+		}
+
+		// Pass MySQL DB for creating per-repo summary stores
+		summaryProcessor := controller.NewSummaryProcessor(
+			sc.LLMService,
+			sc.PromptManager,
+			sc.MySQLConn.GetDB(), // MySQL DB for per-repo stores
+			sc.CodeGraph,
+			summaryConfig,
+			sc.logger,
+		)
+		processors = append(processors, summaryProcessor)
+		sc.logger.Info("Summary processor added to pipeline")
 	}
 
 	sc.Processors = processors
@@ -249,6 +299,7 @@ func GetIndexBuildingOptions(cfg *config.Config) ServiceInitOptions {
 		EnableCodeGraph:   cfg.IndexBuilding.EnableCodeGraph,
 		EnableEmbeddings:  cfg.IndexBuilding.EnableEmbeddings,
 		EnableRepoService: cfg.IndexBuilding.EnableCodeGraph, // Only needed for CodeGraph
+		EnableSummary:     cfg.IndexBuilding.EnableSummary,
 	}
 }
 
@@ -259,6 +310,54 @@ func GetServerModeOptions(cfg *config.Config) ServiceInitOptions {
 		RequireMySQL:      false, // Optional in server mode
 		EnableCodeGraph:   cfg.App.CodeGraph,
 		EnableEmbeddings:  cfg.Qdrant.Host != "" && cfg.Ollama.URL != "",
-		EnableRepoService: true, // Always needed in server mode
+		EnableRepoService: true,  // Always needed in server mode
+		EnableSummary:     false, // Summary is only used during index building
 	}
+}
+
+// initSummaryServices initializes the LLM service and prompt manager for summarization
+func initSummaryServices(cfg *config.Config, logger *zap.Logger) (llm.LLMService, *summary.PromptManager, error) {
+	// Build LLM config from summary config
+	llmConfig := llm.Config{
+		Provider:      llm.Provider(cfg.Summary.LLMProvider),
+		Model:         cfg.Summary.LLMModel,
+		MaxTokens:     500,
+		Temperature:   0.3,
+		OllamaURL:     cfg.Summary.OllamaURL,
+		ClaudeAPIKey:  cfg.Summary.ClaudeAPIKey,
+		OpenAIAPIKey:  cfg.Summary.OpenAIAPIKey,
+		OpenAIBaseURL: cfg.Summary.OpenAIBaseURL,
+	}
+
+	// Use Ollama URL from main config if not set in summary config
+	if llmConfig.OllamaURL == "" && cfg.Ollama.URL != "" {
+		llmConfig.OllamaURL = cfg.Ollama.URL
+	}
+
+	// Default to Ollama if no provider specified
+	if llmConfig.Provider == "" {
+		llmConfig.Provider = llm.ProviderOllama
+	}
+
+	// Create LLM service
+	llmService, err := llm.NewLLMService(llmConfig, logger)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create LLM service: %w", err)
+	}
+
+	// Create prompt manager - prompts file is required when summary is enabled
+	if cfg.Summary.PromptsFile == "" {
+		return nil, nil, fmt.Errorf("summary.prompts_file is required when summary is enabled")
+	}
+
+	promptManager, err := summary.NewPromptManager(cfg.Summary.PromptsFile)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to load prompts from %s: %w", cfg.Summary.PromptsFile, err)
+	}
+
+	logger.Info("Summary services initialized",
+		zap.String("provider", string(llmConfig.Provider)),
+		zap.String("model", llmConfig.Model))
+
+	return llmService, promptManager, nil
 }

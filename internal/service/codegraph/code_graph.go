@@ -1023,6 +1023,13 @@ func (cg *CodeGraph) FindNodesByNameAndTypeInFile(ctx context.Context, name stri
 	})
 }
 
+// GetNodesByTypeAndFileID returns all nodes of a given type in a specific file
+func (cg *CodeGraph) GetNodesByTypeAndFileID(ctx context.Context, nodeType ast.NodeType, fileID int32) ([]*ast.Node, error) {
+	return cg.readNodes(ctx, nodeType, map[string]any{
+		"fileId": int64(fileID),
+	})
+}
+
 func (cg *CodeGraph) CreateRelationReal(ctx context.Context, parentNodeID, childNodeID ast.NodeID,
 	relationLabel string, metaData map[string]any, fileID int32) error {
 	parameters := map[string]any{
@@ -1355,8 +1362,7 @@ func (cg *CodeGraph) CreateConditionalRelation(ctx context.Context, condNodeID,
 
 func (cg *CodeGraph) FindFunctionCalls(ctx context.Context, fileID ast.NodeID) (map[ast.NodeID][]*ast.Node, error) {
 	query := `
-		MATCH (fc:FunctionCall)<-[:CONTAINS*]-(f:Function)
-		WHERE fc.fileId = $fileId
+		MATCH (fc:FunctionCall {fileId: $fileId})<-[:CONTAINS*]-(f:Function {fileId: $fileId})
 		RETURN fc, f.id AS functionId
 	`
 

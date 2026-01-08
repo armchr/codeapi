@@ -31,6 +31,11 @@ func (ep *EmbeddingProcessor) Name() string {
 	return "Embedding"
 }
 
+// Init initializes the processor for a repository (no-op for EmbeddingProcessor)
+func (ep *EmbeddingProcessor) Init(ctx context.Context, repo *config.Repository) error {
+	return nil
+}
+
 // ensureCollection ensures the Qdrant collection exists for the repository
 func (ep *EmbeddingProcessor) ensureCollection(ctx context.Context, collectionName string) error {
 	// Check if we've already initialized this collection
