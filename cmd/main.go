@@ -111,12 +111,6 @@ func main() {
 		logger.Fatal("Failed to initialize processors", zap.Error(err))
 	}
 
-	// Start CodeGraph processing in background if enabled
-	/*
-		if container.CodeGraph != nil {
-			CodeGraphEntry(cfg, logger, container)
-		}
-	*/
 
 	repoController := controller.NewRepoController(container.RepoService, container.ChunkService, container.Processors, container.MySQLConn, cfg, logger)
 
@@ -127,7 +121,13 @@ func main() {
 		codeAPIController = controller.NewCodeAPIController(codeAPI, logger)
 	}
 
-	router := handler.SetupRouter(repoController, codeAPIController, cfg, logger)
+	// Initialize Summary controller if MySQL is available
+	var summaryController *controller.SummaryController
+	if container.MySQLConn != nil {
+		summaryController = controller.NewSummaryController(container.MySQLConn.GetDB(), logger)
+	}
+
+	router := handler.SetupRouter(repoController, codeAPIController, summaryController, cfg, logger)
 
 	logger.Info("Starting server", zap.Int("port", cfg.App.Port))
 	if err := http.ListenAndServe(fmt.Sprintf(":%d", cfg.App.Port), router); err != nil {

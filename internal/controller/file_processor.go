@@ -32,6 +32,11 @@ type FileContext struct {
 // FileProcessor defines the interface for processing individual files
 // and performing repository-level post-processing operations
 type FileProcessor interface {
+	// Init initializes the processor for a repository before any files are processed
+	// This is called once per repository at the start of processing
+	// Use this for setup operations like creating database tables or initializing stores
+	Init(ctx context.Context, repo *config.Repository) error
+
 	// ProcessFile processes a single file in the repository
 	// ctx: context for cancellation
 	// repo: repository configuration

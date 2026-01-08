@@ -40,6 +40,28 @@ func (cgp *CodeGraphProcessor) Name() string {
 	return "CodeGraph"
 }
 
+// Init initializes the processor for a repository.
+// This pre-initializes the language server to ensure it's ready for post-processing.
+func (cgp *CodeGraphProcessor) Init(ctx context.Context, repo *config.Repository) error {
+	cgp.logger.Info("Initializing CodeGraph processor for repository",
+		zap.String("repo_name", repo.Name),
+		zap.String("language", repo.Language))
+
+	// Pre-initialize the language server for this repository
+	// This ensures the LSP is ready before we start post-processing (call hierarchy resolution)
+	if err := cgp.repoService.PrepareLanguageServer(repo.Name); err != nil {
+		cgp.logger.Warn("Failed to pre-initialize language server, will retry during post-processing",
+			zap.String("repo_name", repo.Name),
+			zap.Error(err))
+		// Don't fail - the language server will be initialized lazily if needed
+		return nil
+	}
+
+	cgp.logger.Info("Language server initialized for repository",
+		zap.String("repo_name", repo.Name))
+	return nil
+}
+
 // ProcessFile processes a single file for code graph building
 func (cgp *CodeGraphProcessor) ProcessFile(ctx context.Context, repo *config.Repository, fileCtx *FileContext) error {
 	fileParser := parse.NewFileParser(cgp.logger, cgp.codeGraph, cgp.config)

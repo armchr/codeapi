@@ -79,6 +79,7 @@ type BloomFilterConfig struct {
 type IndexBuildingConfig struct {
 	EnableCodeGraph  bool `yaml:"enable_code_graph"`
 	EnableEmbeddings bool `yaml:"enable_embeddings"`
+	EnableSummary    bool `yaml:"enable_summary"`
 }
 
 type MySQLConfig struct {
@@ -109,6 +110,22 @@ type GitAnalysisConfig struct {
 	LookbackCommits int             `yaml:"lookback_commits"`  // How many commits to analyze (default: 1000)
 }
 
+// SummaryConfig holds configuration for hierarchical code summarization
+type SummaryConfig struct {
+	LLMProvider  string `yaml:"llm_provider"`   // ollama, claude, openai
+	LLMModel     string `yaml:"llm_model"`      // Model name (e.g., llama3.2, claude-3-5-haiku-20241022)
+	PromptsFile  string `yaml:"prompts_file"`   // Path to prompts YAML config
+	WorkerCount  int    `yaml:"worker_count"`   // Parallel workers for summarization
+	BatchSize    int    `yaml:"batch_size"`     // Batch size for DB writes
+	SkipIfExists bool   `yaml:"skip_if_exists"` // Skip if summary exists and context unchanged
+
+	// Provider-specific
+	OllamaURL     string `yaml:"ollama_url"`     // Ollama API URL
+	ClaudeAPIKey  string `yaml:"claude_api_key"` // Or use ANTHROPIC_API_KEY env var
+	OpenAIAPIKey  string `yaml:"openai_api_key"` // Or use OPENAI_API_KEY env var
+	OpenAIBaseURL string `yaml:"openai_base_url"` // For API-compatible services
+}
+
 type Config struct {
 	Source          SourceConfig          `yaml:"source"`
 	Neo4j           Neo4jConfig           `yaml:"neo4j"`
@@ -120,6 +137,7 @@ type Config struct {
 	MySQL           MySQLConfig           `yaml:"mysql"`
 	CodeGraph       CodeGraphConfig       `yaml:"code_graph"`
 	GitAnalysis     GitAnalysisConfig     `yaml:"git_analysis"`
+	Summary         SummaryConfig         `yaml:"summary"`
 	LanguageServers LanguageServersConfig `yaml:"language_servers"`
 	App             App                   `yaml:"app"`
 }

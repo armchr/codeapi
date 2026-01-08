@@ -64,6 +64,13 @@ func (ib *IndexBuilder) BuildIndexWithGitInfo(ctx context.Context, repo *config.
 			zap.Int("modified_files", len(gitInfo.ModifiedFiles)))
 	}
 
+	// Phase 0: Initialize all processors
+	for _, processor := range ib.processors {
+		if err := processor.Init(ctx, repo); err != nil {
+			return fmt.Errorf("failed to initialize processor %s: %w", processor.Name(), err)
+		}
+	}
+
 	// Phase 1: Process all files in parallel
 	err := ib.processFiles(ctx, repo, useHead, gitInfo)
 	if err != nil {

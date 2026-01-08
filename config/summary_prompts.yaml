@@ -1,0 +1,217 @@
+# Hierarchical Code Summary Prompt Templates
+#
+# This file defines prompts for generating code summaries at different levels:
+# - function: Individual functions and methods
+# - class: Classes with their method summaries
+# - file: Source files with their class/function summaries
+# - folder: Folders/modules with their file summaries
+# - project: Entire project overview
+#
+# Template variables use Go text/template syntax.
+# Available context fields vary by level - see context_fields for each level.
+
+defaults:
+  max_tokens: 500
+  temperature: 0.3
+
+levels:
+  function:
+    system_prompt: |
+      You are a code documentation expert. Generate concise, accurate summaries of code functions and methods.
+      Focus on:
+      - What the function does (its purpose)
+      - Key parameters and their roles
+      - What it returns
+      - Side Effects: <list any side effects like I/O, state mutations, exceptions thrown, or write "None">
+      - Important side effects or behaviors
+      - Keep summaries to 2-3 sentences maximum. Be direct and specific.
+
+      Be direct, specific, and technical. Do not include any other text outside these three sections.
+    user_prompt: |
+      Summarize this {{.Language}} function:
+
+      Name: {{.Name}}
+      {{if .ClassName}}Class: {{.ClassName}}{{end}}
+      {{if .Signature}}Signature: {{.Signature}}{{end}}
+      {{if .ReturnType}}Returns: {{.ReturnType}}{{end}}
+      {{if .Docstring}}Existing Docstring: {{.Docstring}}{{end}}
+      {{if .Annotations}}Annotations: {{range .Annotations}}@{{.}} {{end}}{{end}}
+      {{if .Modifiers}}Modifiers: {{range .Modifiers}}{{.}} {{end}}{{end}}
+
+      {{if .Parameters}}Parameters:
+      {{range .Parameters}}- {{.Name}}: {{.Type}}
+      {{end}}{{end}}
+
+      Code:
+      ```{{.Language}}
+      {{.SourceCode}}
+      ```
+
+      Provide a structured summary using exactly this format:
+      ONE_LINE: <single sentence>
+      DESCRIPTION: <2-3 sentences>
+      SIDE_EFFECTS: <side effects or "None">
+    context_fields:
+      - name
+      - signature
+      - docstring
+      - source_code
+      - parameters
+      - return_type
+      - annotations
+      - modifiers
+      - class_name
+    max_context_chars: 4000
+    max_tokens: 300
+
+  class:
+    system_prompt: |
+      You are a code documentation expert. Generate concise, accurate summaries of classes.
+      Focus on:
+      - The class's primary responsibility
+      - Key public methods and their purposes
+      - Important relationships (inheritance, interfaces)
+      Keep summaries to 2-4 sentences maximum. Be direct and specific.
+    user_prompt: |
+      Summarize this {{.Language}} class based on its structure and method summaries:
+
+      Class Name: {{.Name}}
+      {{if .Docstring}}Existing Docstring: {{.Docstring}}{{end}}
+      {{if .Inheritance}}Inherits from: {{range $i, $v := .Inheritance}}{{if $i}}, {{end}}{{$v}}{{end}}{{end}}
+      {{if .Implements}}Implements: {{range $i, $v := .Implements}}{{if $i}}, {{end}}{{$v}}{{end}}{{end}}
+      {{if .Annotations}}Annotations: {{range .Annotations}}@{{.}} {{end}}{{end}}
+      {{if .Modifiers}}Modifiers: {{range .Modifiers}}{{.}} {{end}}{{end}}
+
+      {{if .Fields}}Fields:
+      {{range .Fields}}- {{.Name}}: {{.Type}}{{if .Modifiers}} ({{range $i, $v := .Modifiers}}{{if $i}}, {{end}}{{$v}}{{end}}){{end}}
+      {{end}}{{end}}
+
+      {{if .MethodSummaries}}Method Summaries:
+      {{range .MethodSummaries}}- {{.Name}}: {{.Summary}}
+      {{end}}{{end}}
+
+      Provide a brief summary of what this class does and its primary responsibility.
+    context_fields:
+      - name
+      - docstring
+      - inheritance
+      - implements
+      - fields
+      - method_summaries
+      - annotations
+      - modifiers
+    max_context_chars: 8000
+    max_tokens: 400
+
+  file:
+    system_prompt: |
+      You are a code documentation expert. Generate concise, accurate summaries of source files.
+      Focus on:
+      - The file's primary purpose
+      - Key classes, functions, or exports it provides
+      - Its role in the larger codebase
+      Keep summaries to 2-4 sentences maximum. Be direct and specific.
+    user_prompt: |
+      Summarize this {{.Language}} source file:
+
+      File: {{.FileName}}
+      Path: {{.FilePath}}
+      {{if .PackageName}}Package: {{.PackageName}}{{end}}
+      {{if .ModuleName}}Module: {{.ModuleName}}{{end}}
+
+      {{if .Imports}}Key Imports:
+      {{range .Imports}}- {{.}}
+      {{end}}{{end}}
+
+      {{if .ClassSummaries}}Classes:
+      {{range .ClassSummaries}}- {{.Name}}: {{.Summary}}
+      {{end}}{{end}}
+
+      {{if .FunctionSummaries}}Functions:
+      {{range .FunctionSummaries}}- {{.Name}}: {{.Summary}}
+      {{end}}{{end}}
+
+      Provide a brief summary of what this file provides and its purpose.
+    context_fields:
+      - file_path
+      - file_name
+      - package_name
+      - module_name
+      - imports
+      - class_summaries
+      - function_summaries
+    max_context_chars: 8000
+    max_tokens: 400
+
+  folder:
+    system_prompt: |
+      You are a code documentation expert. Generate concise summaries of code modules and packages.
+      Focus on:
+      - The module's primary purpose and responsibility
+      - Key components it provides
+      - Its role in the system architecture
+      Keep summaries to 2-4 sentences maximum. Be direct and specific.
+    user_prompt: |
+      Summarize this code folder/module:
+
+      Folder: {{.FolderName}}
+      Path: {{.FolderPath}}
+      {{if .Languages}}Languages: {{range $i, $v := .Languages}}{{if $i}}, {{end}}{{$v}}{{end}}{{end}}
+
+      {{if .FileSummaries}}Files:
+      {{range .FileSummaries}}- {{.Name}}: {{.Summary}}
+      {{end}}{{end}}
+
+      {{if .SubfolderSummaries}}Submodules:
+      {{range .SubfolderSummaries}}- {{.Name}}: {{.Summary}}
+      {{end}}{{end}}
+
+      Provide a brief summary of what this module provides and its purpose in the codebase.
+    context_fields:
+      - folder_path
+      - folder_name
+      - file_summaries
+      - subfolder_summaries
+      - languages
+    max_context_chars: 12000
+    max_tokens: 500
+
+  project:
+    system_prompt: |
+      You are a code documentation expert. Generate a high-level project overview.
+      Focus on:
+      - What the project does
+      - Key components and their roles
+      - Technologies and patterns used
+      - How the components work together
+      Keep the overview to 4-6 sentences maximum. Be direct and specific.
+    user_prompt: |
+      Provide a high-level summary of this software project:
+
+      Project Name: {{.ProjectName}}
+      Languages: {{range $i, $v := .Languages}}{{if $i}}, {{end}}{{$v}}{{end}}
+
+      Statistics:
+      - Total Files: {{.TotalFiles}}
+      - Total Classes: {{.TotalClasses}}
+      - Total Functions: {{.TotalFunctions}}
+
+      {{if .TopLevelSummaries}}Top-level Components:
+      {{range .TopLevelSummaries}}- {{.Name}}: {{.Summary}}
+      {{end}}{{end}}
+
+      {{if .EntryPoints}}Entry Points:
+      {{range .EntryPoints}}- {{.}}
+      {{end}}{{end}}
+
+      Provide a comprehensive overview of what this project does and how it's structured.
+    context_fields:
+      - project_name
+      - languages
+      - top_level_summaries
+      - entry_points
+      - total_files
+      - total_classes
+      - total_functions
+    max_context_chars: 16000
+    max_tokens: 600

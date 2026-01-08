@@ -7,6 +7,7 @@ A multi-language code analysis and indexing platform that builds semantic code g
 - **Multi-Language Support**: Go, Python, Java, TypeScript, and JavaScript
 - **Code Graph Construction**: Builds a comprehensive knowledge graph capturing functions, classes, variables, call relationships, inheritance, and data flow
 - **Semantic Code Search**: Vector embeddings enable similarity-based code search
+- **Hierarchical Code Summarization**: LLM-powered summaries at function, class, file, folder, and project levels
 - **Rich Query API**: REST endpoints for code exploration, call graph analysis, and impact assessment
 - **Flexible Indexing**: Server mode for on-demand analysis or CLI mode for batch processing
 - **Git Integration**: Optional git HEAD mode to index only committed versions
@@ -63,6 +64,16 @@ make run
 
 The API will be available at `http://localhost:8181`.
 
+### 5. Access DB
+```bash
+# Maria DB
+docker exec -it $(docker ps --filter "publish=3306" --format "{{.Names}}") mariadb -u root -parmchair armchair
+
+# QDrant viewer
+git clone https://github.com/qdrant/qdrant-web-ui.git
+npm start
+```
+
 ## Building
 
 ```bash
@@ -114,6 +125,15 @@ ollama:                         # Optional: for embedding generation
 index_building:
   enable_code_graph: true       # Build code graph
   enable_embeddings: false      # Generate embeddings
+  enable_summary: false         # Generate LLM code summaries
+
+summary:                        # Required when enable_summary is true
+  llm_provider: "ollama"        # ollama, claude, or openai
+  llm_model: "qwen2.5-coder"    # Model name
+  prompts_file: "config/summary_prompts.yaml"  # Prompt templates
+  worker_count: 4               # Parallel summarization workers
+  batch_size: 50                # Batch size for DB writes
+  skip_if_exists: true          # Skip unchanged entities
 
 code_graph:
   enable_batch_writes: false    # Batch writes (faster for large repos)
@@ -216,11 +236,14 @@ make build-index REPO="repo1 repo2 repo3"
 |-----------|----------------|
 | **RepoController** | Handles indexing requests and code search |
 | **CodeAPIController** | Provides code graph query and analysis APIs |
+| **SummaryController** | Provides code summary query APIs |
 | **IndexBuilder** | Orchestrates parallel file processing |
 | **CodeGraphProcessor** | Parses files and builds Neo4j graph |
 | **EmbeddingProcessor** | Generates vector embeddings for code chunks |
+| **SummaryProcessor** | Generates LLM-powered hierarchical code summaries |
 | **CodeGraph** | Neo4j interface for storing code structure |
 | **FileVersionRepository** | MySQL-based file tracking with unique IDs |
+| **SummaryStore** | MySQL storage for code summaries |
 
 ### Code Graph Model
 
@@ -280,6 +303,10 @@ make build-index REPO="repo1 repo2 repo3"
 | `POST` | [`/codeapi/v1/cypher`](#execute-cypher-query-read) | Execute read Cypher query |
 | `POST` | [`/codeapi/v1/cypher/write`](#execute-cypher-query-write) | Execute write Cypher query |
 | `GET` | [`/codeapi/v1/health`](#codeapi-health-check) | CodeAPI health check |
+| `POST` | [`/codeapi/v1/summaries/file`](#get-file-summaries) | Get all summaries for a file |
+| `POST` | [`/codeapi/v1/summaries/file/summary`](#get-file-level-summary) | Get file-level summary |
+| `POST` | [`/codeapi/v1/summaries/entity`](#get-entity-summary) | Get specific function/class summary |
+| `POST` | [`/codeapi/v1/summaries/stats`](#get-summary-statistics) | Get summary statistics |
 
 ---
 
@@ -1177,6 +1204,181 @@ GET /codeapi/v1/health
 ```json
 {
   "status": "healthy"
+}
+```
+
+---
+
+### Code Summary Query Endpoints
+
+These endpoints query LLM-generated code summaries. Summaries are generated during index building when `index_building.enable_summary` is set to `true`.
+
+#### Get File Summaries
+
+Get all function, class, and file-level summaries for a file. Optionally filter by entity type.
+
+```
+POST /codeapi/v1/summaries/file
+```
+
+**Request:**
+```json
+{
+  "repo_name": "my-project",
+  "file_path": "/path/to/UserService.java",
+  "entity_type": "function"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `repo_name` | string | Yes | Repository name |
+| `file_path` | string | Yes | Absolute path to the file |
+| `entity_type` | string | No | Filter by type: `"function"`, `"class"`, or omit for all |
+
+**Response:**
+```json
+{
+  "file_path": "/path/to/UserService.java",
+  "summaries": [
+    {
+      "id": 123,
+      "entity_id": "func-456",
+      "entity_type": "function",
+      "entity_name": "getUser",
+      "file_path": "/path/to/UserService.java",
+      "summary": "ONE_LINE: Retrieves a user by ID from the database.\nDESCRIPTION: This method queries the user repository to find a user matching the provided ID. Returns null if no user is found.\nSIDE_EFFECTS: Database read operation.",
+      "llm_provider": "ollama",
+      "llm_model": "qwen2.5-coder",
+      "prompt_tokens": 450,
+      "output_tokens": 85,
+      "created_at": "2024-01-15T10:30:00Z",
+      "updated_at": "2024-01-15T10:30:00Z"
+    }
+  ],
+  "count": 5
+}
+```
+
+---
+
+#### Get File-Level Summary
+
+Get the file-level summary for a source file.
+
+```
+POST /codeapi/v1/summaries/file/summary
+```
+
+**Request:**
+```json
+{
+  "repo_name": "my-project",
+  "file_path": "/path/to/UserService.java"
+}
+```
+
+**Response:**
+```json
+{
+  "id": 789,
+  "entity_id": "file:/path/to/UserService.java",
+  "entity_type": "file",
+  "entity_name": "UserService.java",
+  "file_path": "/path/to/UserService.java",
+  "summary": "This file provides the UserService class which handles user management operations including CRUD operations, authentication, and user profile management. It depends on UserRepository for data persistence.",
+  "llm_provider": "ollama",
+  "llm_model": "qwen2.5-coder",
+  "prompt_tokens": 1200,
+  "output_tokens": 150,
+  "created_at": "2024-01-15T10:30:00Z",
+  "updated_at": "2024-01-15T10:30:00Z"
+}
+```
+
+---
+
+#### Get Entity Summary
+
+Get a specific function or class summary by name.
+
+```
+POST /codeapi/v1/summaries/entity
+```
+
+**Request:**
+```json
+{
+  "repo_name": "my-project",
+  "file_path": "/path/to/UserService.java",
+  "entity_type": "function",
+  "entity_name": "getUser"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `repo_name` | string | Yes | Repository name |
+| `file_path` | string | Yes | Absolute path to the file |
+| `entity_type` | string | Yes | Type: `"function"` or `"class"` |
+| `entity_name` | string | Yes | Name of the function or class |
+
+**Response:**
+```json
+{
+  "id": 123,
+  "entity_id": "func-456",
+  "entity_type": "function",
+  "entity_name": "getUser",
+  "file_path": "/path/to/UserService.java",
+  "summary": "ONE_LINE: Retrieves a user by ID from the database.\nDESCRIPTION: This method queries the user repository to find a user matching the provided ID. Returns null if no user is found.\nSIDE_EFFECTS: Database read operation.",
+  "llm_provider": "ollama",
+  "llm_model": "qwen2.5-coder",
+  "prompt_tokens": 450,
+  "output_tokens": 85,
+  "created_at": "2024-01-15T10:30:00Z",
+  "updated_at": "2024-01-15T10:30:00Z"
+}
+```
+
+**Error Response (404):**
+```json
+{
+  "error": "summary not found"
+}
+```
+
+---
+
+#### Get Summary Statistics
+
+Get statistics about code summaries for a repository.
+
+```
+POST /codeapi/v1/summaries/stats
+```
+
+**Request:**
+```json
+{
+  "repo_name": "my-project"
+}
+```
+
+**Response:**
+```json
+{
+  "repo_name": "my-project",
+  "stats": {
+    "total": 250,
+    "functions": 180,
+    "classes": 45,
+    "files": 25,
+    "folders": 0,
+    "projects": 0,
+    "total_prompt_tokens": 125000,
+    "total_output_tokens": 35000
+  }
 }
 ```
 

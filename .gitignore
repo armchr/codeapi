@@ -11,6 +11,13 @@ assets/
 
 *.tree
 
+.classpath
+.factorypath
+.target
+.project
+.settings
+target/
+
 # Build output
 /codeapi
 /run_eval

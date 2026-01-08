@@ -47,3 +47,9 @@ func (rs *RepoService) GetFunctionHovers(ctx context.Context, repoName string, f
 func (rs *RepoService) GetFunctionCallers(ctx context.Context, repoName, relativePath, functionName string, depth int) (*model.CallGraph, error) {
 	return rs.lspService.GetFunctionCallers(ctx, repoName, relativePath, functionName, depth)
 }
+
+// PrepareLanguageServer initializes the language server for a repository upfront.
+// This is useful for index building to ensure LSP is ready before post-processing.
+func (rs *RepoService) PrepareLanguageServer(repoName string) error {
+	return rs.lspService.PrepareLanguageServer(repoName)
+}
