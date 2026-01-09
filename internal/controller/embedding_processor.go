@@ -1,10 +1,13 @@
 package controller
 
 import (
-	"github.com/armchr/codeapi/internal/config"
-	"github.com/armchr/codeapi/internal/service/vector"
 	"context"
 	"sync/atomic"
+
+	"github.com/armchr/codeapi/internal/config"
+	"github.com/armchr/codeapi/internal/model"
+	"github.com/armchr/codeapi/internal/service/vector"
+	"github.com/armchr/codeapi/internal/util"
 
 	"go.uber.org/zap"
 )
@@ -100,11 +103,55 @@ func (ep *EmbeddingProcessor) ProcessFile(ctx context.Context, repo *config.Repo
 	// Track total chunks processed
 	ep.chunkCount.Add(int64(len(chunks)))
 
+	// Index method signatures for semantic signature search
+	ep.indexMethodSignatures(ctx, repo.Language, collectionName, chunks, fileCtx.FileID)
+
 	ep.logger.Debug("Successfully processed file for embeddings",
 		zap.String("path", fileCtx.FilePath),
 		zap.Int32("file_id", fileCtx.FileID),
 		zap.Int("chunks", len(chunks)))
 	return nil
+}
+
+// indexMethodSignatures extracts and indexes method signatures from function chunks
+func (ep *EmbeddingProcessor) indexMethodSignatures(ctx context.Context, language, collectionName string, chunks []*model.CodeChunk, fileID int32) {
+	var signatures []vector.MethodSignatureData
+
+	for _, chunk := range chunks {
+		// Only process function chunks that have signatures
+		if chunk.ChunkType != model.ChunkTypeFunction || chunk.Signature == "" {
+			continue
+		}
+
+		// Parse the signature string to extract components
+		sigInfo := util.ParseSignatureByLanguage(chunk.Signature, chunk.Name, chunk.ClassName, language)
+
+		// Create signature data for indexing
+		sigData := vector.MethodSignatureData{
+			MethodName:     chunk.Name,
+			ClassName:      chunk.ClassName,
+			ReturnType:     sigInfo.ReturnType,
+			ParameterTypes: sigInfo.ParameterTypes,
+			ParameterNames: sigInfo.ParameterNames,
+			FilePath:       chunk.FilePath,
+			StartLine:      chunk.StartLine,
+			EndLine:        chunk.EndLine,
+			FileID:         fileID,
+		}
+
+		signatures = append(signatures, sigData)
+	}
+
+	if len(signatures) == 0 {
+		return
+	}
+
+	// Index the signatures
+	if err := ep.chunkService.IndexMethodSignatures(ctx, collectionName, signatures); err != nil {
+		ep.logger.Warn("Failed to index method signatures",
+			zap.String("collection", collectionName),
+			zap.Error(err))
+	}
 }
 
 // PostProcess performs any cleanup or finalization after all files are processed

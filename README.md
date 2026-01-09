@@ -90,6 +90,38 @@ make test
 make clean
 ```
 
+## Testing
+
+CodeAPI includes unit tests for core parsing and utility functionality.
+
+### Running Tests
+
+```bash
+# Run all tests
+make test
+
+# Run tests with verbose output
+make test-verbose
+
+# Run tests with coverage summary
+make test-coverage
+
+# Generate HTML coverage report
+make test-coverage-report
+
+# Run unit tests only (parsing, utilities, LSP)
+make test-unit
+```
+
+### Test Coverage
+
+The test suite covers:
+
+- **LSP Utilities** (`pkg/lsp/base/`) - Symbol matching, range comparison, Java method name extraction
+- **Concurrent Data Structures** (`internal/util/`) - Thread-safe map operations
+- **Scope Management** (`internal/parse/`) - Symbol resolution, scope hierarchy, variable tracking
+- **Java Parser** (`internal/parse/`) - Annotation extraction from Java AST nodes
+
 ## Configuration
 
 ### Application Configuration (config/app.yaml)

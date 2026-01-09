@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Unit test suite** for core functionality
+  - LSP utilities (`pkg/lsp/base/lsp_util_test.go`) - 7 tests for symbol matching, range comparison, Java method name extraction
+  - Concurrent SafeMap (`internal/util/safe_map_test.go`) - 8 tests for thread-safe map operations
+  - Scope management (`internal/parse/translate_test.go`) - 16 tests for Symbol, Scope, and TranslateFromSyntaxTree
+  - Java annotation extraction (`internal/parse/java_visitor_test.go`) - 10 tests for parsing Java annotations from AST
+
+- **Configurable log level** via `log_level` option in app.yaml (debug, info, warn, error)
+
+- **Makefile test commands**
+  - `make test` - Run all tests
+  - `make test-verbose` - Run tests with verbose output
+  - `make test-coverage` - Run tests with coverage summary
+  - `make test-coverage-report` - Generate HTML coverage report
+  - `make test-unit` - Run unit tests only (parsing, utilities, LSP)
+
 - **Java LSP support** with Eclipse JDT Language Server
   - Full LSP integration for semantic analysis (call hierarchies, symbol resolution)
   - Java LSP client (`pkg/lsp/java_client.go`) with external module detection for Maven, Gradle, and JDK dependencies
@@ -22,6 +37,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Enables Cypher queries to find code by framework annotations (e.g., Spring Boot controllers)
 
 ### Fixed
+
+- **Qdrant vector metadata type error** - Fixed panic when storing `[]string` types in Qdrant metadata
+  - `parameter_types` and `parameter_names` fields were `[]string` which Qdrant's `NewValueMap` doesn't support
+  - Changed to comma-separated strings using `strings.Join()` in `code_chunk_service.go`
 
 - **Java chained method call parsing** - Fixed `handleMethodInvocation` to recursively traverse nested method invocations
   - Chained calls like `repository.findById(id).stream().map(this::toDto).collect(...)` now correctly create FunctionCall nodes for all methods in the chain

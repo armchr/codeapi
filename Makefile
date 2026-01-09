@@ -71,6 +71,20 @@ clean:
 test:
 	go test ./...
 
+test-verbose:
+	go test -v ./...
+
+test-coverage:
+	go test -cover ./...
+
+test-coverage-report:
+	go test -coverprofile=coverage.out ./...
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report generated: coverage.html"
+
+test-unit:
+	go test -v ./pkg/lsp/base/... ./internal/util/... ./internal/parse/...
+
 deps:
 	go mod download
 	go mod tidy

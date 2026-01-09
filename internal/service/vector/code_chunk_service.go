@@ -871,3 +871,137 @@ func (ccs *CodeChunkService) generateNoContextID(originalID string) string {
 		hashStr[20:32],
 	)
 }
+
+// MethodSignatureData holds information for indexing a method signature
+type MethodSignatureData struct {
+	MethodName     string
+	ClassName      string
+	ReturnType     string
+	ParameterTypes []string
+	ParameterNames []string
+	FilePath       string
+	StartLine      int
+	EndLine        int
+	FileID         int32
+}
+
+// IndexMethodSignatures indexes method signatures for semantic search
+// The normalized signature text is embedded and stored separately from code content
+func (ccs *CodeChunkService) IndexMethodSignatures(ctx context.Context, collectionName string, signatures []MethodSignatureData) error {
+	if len(signatures) == 0 {
+		return nil
+	}
+
+	// Create chunks for each signature
+	var chunks []*model.CodeChunk
+	var textsToEmbed []string
+
+	for _, sig := range signatures {
+		// Build SignatureInfo for normalization
+		sigInfo := util.BuildSignatureInfo(sig.ClassName, sig.MethodName, sig.ReturnType, sig.ParameterNames, sig.ParameterTypes)
+
+		// Generate normalized text for embedding
+		normalizedText := util.NormalizeSignatureForEmbedding(sigInfo)
+		if normalizedText == "" {
+			continue
+		}
+
+		// Generate unique ID for this signature chunk
+		chunkID := ccs.generateSignatureChunkID(sig.FilePath, sig.ClassName, sig.MethodName, uint(sig.StartLine))
+
+		// Format human-readable signature
+		formattedSig := util.FormatSignatureString(sigInfo)
+
+		chunk := &model.CodeChunk{
+			ID:        chunkID,
+			FileID:    sig.FileID,
+			ChunkType: model.ChunkTypeMethodSignature,
+			Level:     3, // Same level as function
+			Content:   normalizedText,
+			Language:  "", // Not language-specific for signatures
+			FilePath:  sig.FilePath,
+			StartLine: sig.StartLine,
+			EndLine:   sig.EndLine,
+			Name:      sig.MethodName,
+			Signature: formattedSig,
+			ClassName: sig.ClassName,
+			Metadata: map[string]interface{}{
+				"return_type":     sig.ReturnType,
+				"parameter_types": strings.Join(sig.ParameterTypes, ","),
+				"parameter_names": strings.Join(sig.ParameterNames, ","),
+				"normalized_text": normalizedText,
+			},
+		}
+
+		chunks = append(chunks, chunk)
+		textsToEmbed = append(textsToEmbed, normalizedText)
+	}
+
+	if len(chunks) == 0 {
+		return nil
+	}
+
+	// Generate embeddings for normalized signature texts
+	embeddings, err := ccs.embedding.GenerateEmbeddings(ctx, textsToEmbed)
+	if err != nil {
+		return fmt.Errorf("failed to generate signature embeddings: %w", err)
+	}
+
+	// Assign embeddings to chunks
+	for i, embedding := range embeddings {
+		chunks[i].Embedding = embedding
+	}
+
+	// Store in vector database
+	if err := ccs.vectorDB.UpsertChunks(ctx, collectionName, chunks); err != nil {
+		return fmt.Errorf("failed to store signature chunks: %w", err)
+	}
+
+	ccs.logger.Info("Indexed method signatures",
+		zap.String("collection", collectionName),
+		zap.Int("count", len(chunks)))
+
+	return nil
+}
+
+// SearchMethodSignatures searches for methods by natural language query on their signatures
+func (ccs *CodeChunkService) SearchMethodSignatures(ctx context.Context, collectionName, query string, limit int) ([]*model.CodeChunk, []float32, error) {
+	// Normalize the query text similarly to how signatures are normalized
+	// This helps match queries like "find user by email" to "findByEmail"
+	queryForEmbedding := query
+
+	// Generate embedding for query
+	queryVector, err := ccs.embedding.GenerateEmbedding(ctx, queryForEmbedding)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to generate query embedding: %w", err)
+	}
+
+	// Create filter to only search method_signature chunks
+	filter := map[string]interface{}{
+		"chunk_type": string(model.ChunkTypeMethodSignature),
+	}
+
+	// Search in vector database
+	chunks, scores, err := ccs.vectorDB.SearchSimilar(ctx, collectionName, queryVector, limit, filter)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to search signatures: %w", err)
+	}
+
+	return chunks, scores, nil
+}
+
+// generateSignatureChunkID generates a unique ID for a method signature chunk
+func (ccs *CodeChunkService) generateSignatureChunkID(filePath, className, methodName string, line uint) string {
+	input := fmt.Sprintf("%s:%s:%s:%d:signature", filePath, className, methodName, line)
+	hash := sha256.Sum256([]byte(input))
+	hashStr := hex.EncodeToString(hash[:])
+
+	// Convert hash to UUID format (8-4-4-4-12)
+	return fmt.Sprintf("%s-%s-%s-%s-%s",
+		hashStr[0:8],
+		hashStr[8:12],
+		hashStr[12:16],
+		hashStr[16:20],
+		hashStr[20:32],
+	)
+}

@@ -41,6 +41,9 @@ func SetupRouter(repoController *controller.RepoController, codeAPIController *c
 		v1.POST("/processDirectory", repoController.ProcessDirectory)
 		v1.POST("/searchSimilarCode", repoController.SearchSimilarCode)
 
+		// Semantic signature search endpoint
+		v1.POST("/searchMethodsBySignature", repoController.SearchMethodsBySignature)
+
 		// Index building endpoints
 		v1.POST("/indexFile", repoController.IndexFile)
 

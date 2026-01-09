@@ -33,6 +33,22 @@ func (s *stringSliceFlag) Set(value string) error {
 	return nil
 }
 
+// parseLogLevel converts a string log level to zapcore.Level
+func parseLogLevel(level string) zapcore.Level {
+	switch strings.ToLower(level) {
+	case "debug":
+		return zapcore.DebugLevel
+	case "info":
+		return zapcore.InfoLevel
+	case "warn", "warning":
+		return zapcore.WarnLevel
+	case "error":
+		return zapcore.ErrorLevel
+	default:
+		return zapcore.InfoLevel // default to info
+	}
+}
+
 func main() {
 	var sourceConfigPath = flag.String("source", "source.yaml", "Path to source configuration file")
 	var appConfigPath = flag.String("app", "app.yaml", "Path to app configuration file")
@@ -46,10 +62,13 @@ func main() {
 	var clean = flag.Bool("clean", false, "Clean up all DB entries (MySQL, Neo4j, Qdrant) for the repository after processing (only valid with --build-index)")
 	flag.Parse()
 
-	//logger, err := zap.NewProduction()
+	cfg, err := config.LoadConfig(*appConfigPath, *sourceConfigPath)
+	if err != nil {
+		log.Fatal("Failed to load configuration:", err)
+	}
+
 	cfgZap := zap.NewProductionConfig()
-	//cfgZap.Level.SetLevel(zapcore.DebugLevel)
-	cfgZap.Level.SetLevel(zapcore.InfoLevel)
+	cfgZap.Level.SetLevel(parseLogLevel(cfg.App.LogLevel))
 	cfgZap.OutputPaths = []string{"stdout", "all.log"}
 	logger, err := cfgZap.Build()
 	if err != nil {
@@ -57,11 +76,6 @@ func main() {
 	}
 
 	defer logger.Sync()
-
-	cfg, err := config.LoadConfig(*appConfigPath, *sourceConfigPath)
-	if err != nil {
-		logger.Fatal("Failed to load configuration", zap.Error(err))
-	}
 
 	// Override workdir from command line if provided
 	if *workDir != "" {

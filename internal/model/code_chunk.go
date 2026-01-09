@@ -8,12 +8,13 @@ import (
 type ChunkType string
 
 const (
-	ChunkTypeFile        ChunkType = "file"
-	ChunkTypeClass       ChunkType = "class"
-	ChunkTypeFunction    ChunkType = "function"
-	ChunkTypeBlock       ChunkType = "block"
-	ChunkTypeConditional ChunkType = "conditional" // if, else, switch, case
-	ChunkTypeLoop        ChunkType = "loop"        // for, while, do-while
+	ChunkTypeFile            ChunkType = "file"
+	ChunkTypeClass           ChunkType = "class"
+	ChunkTypeFunction        ChunkType = "function"
+	ChunkTypeBlock           ChunkType = "block"
+	ChunkTypeConditional     ChunkType = "conditional"      // if, else, switch, case
+	ChunkTypeLoop            ChunkType = "loop"             // for, while, do-while
+	ChunkTypeMethodSignature ChunkType = "method_signature" // For semantic signature search
 )
 
 // CodeChunk represents a hierarchical piece of code with vector embedding

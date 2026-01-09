@@ -220,6 +220,78 @@ Search for similar code using a code snippet.
 
 ---
 
+### POST /api/v1/searchMethodsBySignature
+
+Search for methods using natural language queries on their signatures. This endpoint enables semantic search on method signatures, allowing you to find methods by describing what they do (e.g., "find user by email") rather than requiring exact name matches.
+
+**How it works:**
+1. During indexing, method signatures are normalized into embedding-friendly text (e.g., `findByEmail(String email): User` becomes `"User Service find By Email String email returns User"`)
+2. The query is converted to an embedding and compared against stored signature embeddings
+3. Results are ranked by semantic similarity
+
+**Request:**
+```json
+{
+  "repo_name": "spring-petclinic",
+  "query": "find user by email address",
+  "limit": 10
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `repo_name` | string | Yes | Name of the repository |
+| `query` | string | Yes | Natural language query describing the method signature |
+| `limit` | int | No | Maximum results to return (default: 10) |
+
+**Response:**
+```json
+{
+  "repo_name": "spring-petclinic",
+  "query": "find user by email address",
+  "results": [
+    {
+      "method_name": "findByEmail",
+      "class_name": "UserService",
+      "signature": "User findByEmail(String email)",
+      "return_type": "User",
+      "parameter_types": ["String"],
+      "parameter_names": ["email"],
+      "file_path": "src/main/java/org/example/UserService.java",
+      "start_line": 45,
+      "end_line": 55,
+      "score": 0.92,
+      "normalized_text": "User Service find By Email String email returns User"
+    },
+    {
+      "method_name": "findUserByEmailAddress",
+      "class_name": "UserRepository",
+      "signature": "Optional<User> findUserByEmailAddress(String emailAddress)",
+      "return_type": "Optional<User>",
+      "parameter_types": ["String"],
+      "parameter_names": ["emailAddress"],
+      "file_path": "src/main/java/org/example/UserRepository.java",
+      "start_line": 22,
+      "end_line": 30,
+      "score": 0.87,
+      "normalized_text": "User Repository find User By Email Address String email Address returns Optional User"
+    }
+  ],
+  "success": true,
+  "message": "Found 2 matching methods"
+}
+```
+
+**Example Queries:**
+- `"authenticate user with password"` - finds authentication methods
+- `"save order to database"` - finds order persistence methods
+- `"calculate total price"` - finds pricing calculation methods
+- `"get products by category"` - finds product filtering methods
+
+**Note:** Method signatures are indexed automatically during the normal indexing process (`/api/v1/buildIndex` or `--build-index` CLI). No additional configuration is required.
+
+---
+
 ## Code Graph API (`/codeapi/v1`)
 
 ### Reader Endpoints

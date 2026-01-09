@@ -498,6 +498,151 @@ func (rc *RepoController) SearchSimilarCode(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
+// SearchMethodsBySignatureRequest represents the request for semantic signature search
+type SearchMethodsBySignatureRequest struct {
+	RepoName string `json:"repo_name" binding:"required"`
+	Query    string `json:"query" binding:"required"` // Natural language query like "find user by email"
+	Limit    int    `json:"limit"`                    // Max results (default 10)
+}
+
+// SearchMethodsBySignatureResponse represents the response from signature search
+type SearchMethodsBySignatureResponse struct {
+	RepoName string                   `json:"repo_name"`
+	Query    string                   `json:"query"`
+	Results  []MethodSignatureResult  `json:"results"`
+	Success  bool                     `json:"success"`
+	Message  string                   `json:"message,omitempty"`
+}
+
+// MethodSignatureResult represents a single method found by signature search
+type MethodSignatureResult struct {
+	MethodName     string   `json:"method_name"`
+	ClassName      string   `json:"class_name,omitempty"`
+	Signature      string   `json:"signature"`
+	ReturnType     string   `json:"return_type,omitempty"`
+	ParameterTypes []string `json:"parameter_types,omitempty"`
+	ParameterNames []string `json:"parameter_names,omitempty"`
+	FilePath       string   `json:"file_path"`
+	StartLine      int      `json:"start_line"`
+	EndLine        int      `json:"end_line"`
+	Score          float32  `json:"score"`
+	NormalizedText string   `json:"normalized_text,omitempty"` // The normalized text used for embedding
+}
+
+// SearchMethodsBySignature searches for methods using natural language queries on signatures
+func (rc *RepoController) SearchMethodsBySignature(c *gin.Context) {
+	var request SearchMethodsBySignatureRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		rc.logger.Error("Invalid request payload", zap.Error(err))
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Invalid request payload",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	// Check if chunk service is available
+	if rc.chunkService == nil {
+		rc.logger.Error("Code chunk service not available")
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": "Code chunk service not available",
+		})
+		return
+	}
+
+	// Set default limit
+	limit := request.Limit
+	if limit <= 0 {
+		limit = 10
+	}
+
+	// Use repo name as collection name
+	collectionName := request.RepoName
+
+	rc.logger.Info("Searching methods by signature",
+		zap.String("repo_name", request.RepoName),
+		zap.String("query", request.Query),
+		zap.Int("limit", limit))
+
+	// Search using the chunk service
+	chunks, scores, err := rc.chunkService.SearchMethodSignatures(
+		c.Request.Context(),
+		collectionName,
+		request.Query,
+		limit,
+	)
+	if err != nil {
+		rc.logger.Error("Failed to search method signatures",
+			zap.String("repo_name", request.RepoName),
+			zap.Error(err))
+		c.JSON(http.StatusInternalServerError, SearchMethodsBySignatureResponse{
+			RepoName: request.RepoName,
+			Query:    request.Query,
+			Results:  []MethodSignatureResult{},
+			Success:  false,
+			Message:  fmt.Sprintf("Search failed: %v", err),
+		})
+		return
+	}
+
+	// Build results
+	results := make([]MethodSignatureResult, len(chunks))
+	for i, chunk := range chunks {
+		result := MethodSignatureResult{
+			MethodName: chunk.Name,
+			ClassName:  chunk.ClassName,
+			Signature:  chunk.Signature,
+			FilePath:   chunk.FilePath,
+			StartLine:  chunk.StartLine,
+			EndLine:    chunk.EndLine,
+			Score:      scores[i],
+		}
+
+		// Extract metadata if available
+		if chunk.Metadata != nil {
+			if rt, ok := chunk.Metadata["return_type"].(string); ok {
+				result.ReturnType = rt
+			}
+			if pt, ok := chunk.Metadata["parameter_types"].([]string); ok {
+				result.ParameterTypes = pt
+			} else if ptInterface, ok := chunk.Metadata["parameter_types"].([]interface{}); ok {
+				for _, p := range ptInterface {
+					if ps, ok := p.(string); ok {
+						result.ParameterTypes = append(result.ParameterTypes, ps)
+					}
+				}
+			}
+			if pn, ok := chunk.Metadata["parameter_names"].([]string); ok {
+				result.ParameterNames = pn
+			} else if pnInterface, ok := chunk.Metadata["parameter_names"].([]interface{}); ok {
+				for _, p := range pnInterface {
+					if ps, ok := p.(string); ok {
+						result.ParameterNames = append(result.ParameterNames, ps)
+					}
+				}
+			}
+			if nt, ok := chunk.Metadata["normalized_text"].(string); ok {
+				result.NormalizedText = nt
+			}
+		}
+
+		results[i] = result
+	}
+
+	rc.logger.Info("Successfully found methods by signature",
+		zap.String("repo_name", request.RepoName),
+		zap.String("query", request.Query),
+		zap.Int("results", len(results)))
+
+	c.JSON(http.StatusOK, SearchMethodsBySignatureResponse{
+		RepoName: request.RepoName,
+		Query:    request.Query,
+		Results:  results,
+		Success:  true,
+		Message:  fmt.Sprintf("Found %d matching methods", len(results)),
+	})
+}
+
 // IndexFileRequest represents the request to index a single file
 type IndexFileRequest struct {
 	RepoName      string   `json:"repo_name" binding:"required"`

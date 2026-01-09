@@ -30,6 +30,7 @@ type App struct {
 	NumFileThreads              int    `yaml:"num_file_threads,omitempty"`
 	MaxConcurrentFileProcessing int    `yaml:"max_concurrent_file_processing,omitempty"`
 	DebugHTTP                   bool   `yaml:"debug_http,omitempty"` // Log full request/response bodies
+	LogLevel                    string `yaml:"log_level,omitempty"` // debug, info, warn, error (default: info)
 }
 
 // LanguageServersConfig holds paths to language server executables
