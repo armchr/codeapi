@@ -2252,3 +2252,72 @@ func (cg *CodeGraph) ExecuteReadSingle(ctx context.Context, query string, params
 func (cg *CodeGraph) ExecuteWrite(ctx context.Context, query string, params map[string]any) ([]map[string]any, error) {
 	return cg.db.ExecuteWrite(ctx, query, params)
 }
+
+// -----------------------------------------------------------------------------
+// On-Demand Summary Support Methods
+// -----------------------------------------------------------------------------
+
+// FindFunctionByName finds a function by name within a file path
+func (cg *CodeGraph) FindFunctionByName(ctx context.Context, filePath string, functionName string) (*ast.Node, error) {
+	query := `
+		MATCH (f:FileScope {filePath: $filePath})-[:CONTAINS*]->(fn:Function {name: $name})
+		RETURN fn
+		LIMIT 1
+	`
+	nodes, err := cg.readNodesByQuery(ctx, "fn", query, map[string]any{
+		"filePath": filePath,
+		"name":     functionName,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(nodes) == 0 {
+		return nil, nil
+	}
+	return nodes[0], nil
+}
+
+// FindClassByName finds a class by name within a file path
+func (cg *CodeGraph) FindClassByName(ctx context.Context, filePath string, className string) (*ast.Node, error) {
+	query := `
+		MATCH (f:FileScope {filePath: $filePath})-[:CONTAINS*]->(c:Class {name: $name})
+		RETURN c
+		LIMIT 1
+	`
+	nodes, err := cg.readNodesByQuery(ctx, "c", query, map[string]any{
+		"filePath": filePath,
+		"name":     className,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(nodes) == 0 {
+		return nil, nil
+	}
+	return nodes[0], nil
+}
+
+// FindFileByPath finds a file node by its path in a repository
+func (cg *CodeGraph) FindFileByPath(ctx context.Context, repoName string, filePath string) (*ast.Node, error) {
+	query := `
+		MATCH (f:FileScope {repo: $repo, filePath: $filePath})
+		RETURN f
+		LIMIT 1
+	`
+	nodes, err := cg.readNodesByQuery(ctx, "f", query, map[string]any{
+		"repo":     repoName,
+		"filePath": filePath,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(nodes) == 0 {
+		return nil, nil
+	}
+	return nodes[0], nil
+}
+
+// GetClassMethods returns all method nodes for a class
+func (cg *CodeGraph) GetClassMethods(ctx context.Context, classID ast.NodeID) ([]*ast.Node, error) {
+	return cg.GetMethodsOfClass(ctx, classID)
+}

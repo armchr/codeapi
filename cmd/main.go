@@ -48,8 +48,8 @@ func main() {
 
 	//logger, err := zap.NewProduction()
 	cfgZap := zap.NewProductionConfig()
-	cfgZap.Level.SetLevel(zapcore.DebugLevel)
-	//cfgZap.Level.SetLevel(zapcore.InfoLevel)
+	//cfgZap.Level.SetLevel(zapcore.DebugLevel)
+	cfgZap.Level.SetLevel(zapcore.InfoLevel)
 	cfgZap.OutputPaths = []string{"stdout", "all.log"}
 	logger, err := cfgZap.Build()
 	if err != nil {
@@ -124,7 +124,12 @@ func main() {
 	// Initialize Summary controller if MySQL is available
 	var summaryController *controller.SummaryController
 	if container.MySQLConn != nil {
-		summaryController = controller.NewSummaryController(container.MySQLConn.GetDB(), logger)
+		summaryController = controller.NewSummaryController(
+			container.MySQLConn.GetDB(),
+			cfg,
+			container.SummaryProcessor, // May be nil if summary is disabled
+			logger,
+		)
 	}
 
 	router := handler.SetupRouter(repoController, codeAPIController, summaryController, cfg, logger)

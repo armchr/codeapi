@@ -29,8 +29,9 @@ type ServiceContainer struct {
 	RepoService    *service.RepoService
 
 	// Summary services
-	LLMService    llm.LLMService
-	PromptManager *summary.PromptManager
+	LLMService       llm.LLMService
+	PromptManager    *summary.PromptManager
+	SummaryProcessor *controller.SummaryProcessor // Exposed for on-demand generation
 
 	// Processors
 	Processors []controller.FileProcessor
@@ -158,6 +159,7 @@ func (sc *ServiceContainer) InitProcessors(cfg *config.Config) error {
 			sc.logger,
 		)
 		processors = append(processors, summaryProcessor)
+		sc.SummaryProcessor = summaryProcessor // Store for on-demand API access
 		sc.logger.Info("Summary processor added to pipeline")
 	}
 

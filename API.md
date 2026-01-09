@@ -902,6 +902,176 @@ Get methods that access a specific field.
 
 ---
 
+### Code Summary Endpoints
+
+These endpoints query LLM-generated summaries for code entities.
+
+**On-Demand Generation:** If a summary doesn't exist when requested via `/summaries/entity` or `/summaries/file/summary`, the system will automatically generate it using the configured LLM (if summary processor is enabled). This may take a few seconds for the first request.
+
+---
+
+#### POST /codeapi/v1/summaries/file
+
+Get all summaries for entities in a file, optionally filtered by type.
+
+**Request:**
+```json
+{
+  "repo_name": "spring-petclinic",
+  "file_path": "src/main/java/org/example/OwnerController.java",
+  "entity_type": "function"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `repo_name` | string | Yes | Name of the repository |
+| `file_path` | string | Yes | Path relative to repository root |
+| `entity_type` | string | No | Filter by type: `function`, `class`, `file`, `folder`, `project` |
+
+**Response:**
+```json
+{
+  "file_path": "src/main/java/org/example/OwnerController.java",
+  "summaries": [
+    {
+      "id": 1,
+      "entity_id": "12884901895",
+      "entity_type": "function",
+      "entity_name": "findOwner",
+      "file_path": "src/main/java/org/example/OwnerController.java",
+      "summary": "ONE_LINE: Retrieves an owner by ID...",
+      "context_hash": "abc123...",
+      "llm_provider": "ollama",
+      "llm_model": "qwen3:4b",
+      "prompt_tokens": 150,
+      "output_tokens": 200,
+      "created_at": "2026-01-08T10:00:00Z",
+      "updated_at": "2026-01-08T10:00:00Z"
+    }
+  ],
+  "count": 1
+}
+```
+
+---
+
+#### POST /codeapi/v1/summaries/file/summary
+
+Get the file-level summary for a specific file. **Supports on-demand generation.**
+
+**Request:**
+```json
+{
+  "repo_name": "spring-petclinic",
+  "file_path": "src/main/java/org/example/OwnerController.java"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `repo_name` | string | Yes | Name of the repository |
+| `file_path` | string | Yes | Path relative to repository root |
+
+**Response:**
+```json
+{
+  "id": 5,
+  "entity_id": "src/main/java/org/example/OwnerController.java",
+  "entity_type": "file",
+  "entity_name": "OwnerController.java",
+  "file_path": "src/main/java/org/example/OwnerController.java",
+  "summary": "This file defines the OwnerController class...",
+  "context_hash": "def456...",
+  "llm_provider": "ollama",
+  "llm_model": "qwen3:4b",
+  "prompt_tokens": 200,
+  "output_tokens": 150,
+  "created_at": "2026-01-08T10:00:00Z",
+  "updated_at": "2026-01-08T10:00:00Z"
+}
+```
+
+---
+
+#### POST /codeapi/v1/summaries/entity
+
+Get a specific function or class summary by name. **Supports on-demand generation.**
+
+**Request:**
+```json
+{
+  "repo_name": "spring-petclinic",
+  "file_path": "src/main/java/org/example/OwnerController.java",
+  "entity_type": "function",
+  "entity_name": "findOwner"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `repo_name` | string | Yes | Name of the repository |
+| `file_path` | string | Yes | Path relative to repository root |
+| `entity_type` | string | Yes | Must be `function` or `class` |
+| `entity_name` | string | Yes | Name of the function or class |
+
+**Response:**
+```json
+{
+  "id": 1,
+  "entity_id": "12884901895",
+  "entity_type": "function",
+  "entity_name": "findOwner",
+  "file_path": "src/main/java/org/example/OwnerController.java",
+  "summary": "ONE_LINE: Retrieves an owner by ID...",
+  "context_hash": "abc123...",
+  "llm_provider": "ollama",
+  "llm_model": "qwen3:4b",
+  "prompt_tokens": 150,
+  "output_tokens": 200,
+  "created_at": "2026-01-08T10:00:00Z",
+  "updated_at": "2026-01-08T10:00:00Z"
+}
+```
+
+---
+
+#### POST /codeapi/v1/summaries/stats
+
+Get summary statistics for a repository.
+
+**Request:**
+```json
+{
+  "repo_name": "spring-petclinic"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `repo_name` | string | Yes | Name of the repository |
+
+**Response:**
+```json
+{
+  "repo_name": "spring-petclinic",
+  "stats": {
+    "total_summaries": 150,
+    "by_type": {
+      "function": 100,
+      "class": 25,
+      "file": 20,
+      "folder": 4,
+      "project": 1
+    },
+    "total_prompt_tokens": 15000,
+    "total_output_tokens": 20000
+  }
+}
+```
+
+---
+
 ### Raw Cypher Endpoints
 
 These endpoints allow executing raw Neo4j Cypher queries.

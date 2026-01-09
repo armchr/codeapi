@@ -7,7 +7,7 @@ A multi-language code analysis and indexing platform that builds semantic code g
 - **Multi-Language Support**: Go, Python, Java, TypeScript, and JavaScript
 - **Code Graph Construction**: Builds a comprehensive knowledge graph capturing functions, classes, variables, call relationships, inheritance, and data flow
 - **Semantic Code Search**: Vector embeddings enable similarity-based code search
-- **Hierarchical Code Summarization**: LLM-powered summaries at function, class, file, folder, and project levels
+- **Hierarchical Code Summarization**: LLM-powered summaries at function, class, file, folder, and project levels with on-demand generation support
 - **Rich Query API**: REST endpoints for code exploration, call graph analysis, and impact assessment
 - **Flexible Indexing**: Server mode for on-demand analysis or CLI mode for batch processing
 - **Git Integration**: Optional git HEAD mode to index only committed versions
@@ -1211,7 +1211,12 @@ GET /codeapi/v1/health
 
 ### Code Summary Query Endpoints
 
-These endpoints query LLM-generated code summaries. Summaries are generated during index building when `index_building.enable_summary` is set to `true`.
+These endpoints query LLM-generated code summaries. Summaries can be generated in two ways:
+
+1. **Batch Generation**: During index building when `index_building.enable_summary` is set to `true`
+2. **On-Demand Generation**: When querying via `/summaries/entity` or `/summaries/file/summary`, if a summary doesn't exist, it will be automatically generated using the configured LLM (requires summary processor to be enabled)
+
+On-demand generation may take a few seconds for the first request as it calls the LLM to generate the summary.
 
 #### Get File Summaries
 
@@ -1264,7 +1269,7 @@ POST /codeapi/v1/summaries/file
 
 #### Get File-Level Summary
 
-Get the file-level summary for a source file.
+Get the file-level summary for a source file. **Supports on-demand generation** - if the summary doesn't exist, it will be generated automatically.
 
 ```
 POST /codeapi/v1/summaries/file/summary
@@ -1300,7 +1305,7 @@ POST /codeapi/v1/summaries/file/summary
 
 #### Get Entity Summary
 
-Get a specific function or class summary by name.
+Get a specific function or class summary by name. **Supports on-demand generation** - if the summary doesn't exist, it will be generated automatically.
 
 ```
 POST /codeapi/v1/summaries/entity

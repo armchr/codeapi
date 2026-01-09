@@ -1,9 +1,11 @@
 package controller
 
 import (
+	"context"
 	"database/sql"
 	"net/http"
 
+	"github.com/armchr/codeapi/internal/config"
 	"github.com/armchr/codeapi/internal/db"
 	"github.com/armchr/codeapi/internal/service/summary"
 
@@ -13,15 +15,24 @@ import (
 
 // SummaryController handles HTTP requests for code summary queries
 type SummaryController struct {
-	mysqlDB *sql.DB
-	logger  *zap.Logger
+	mysqlDB          *sql.DB
+	config           *config.Config
+	summaryProcessor *SummaryProcessor // For on-demand generation
+	logger           *zap.Logger
 }
 
 // NewSummaryController creates a new SummaryController
-func NewSummaryController(mysqlDB *sql.DB, logger *zap.Logger) *SummaryController {
+func NewSummaryController(
+	mysqlDB *sql.DB,
+	cfg *config.Config,
+	summaryProcessor *SummaryProcessor,
+	logger *zap.Logger,
+) *SummaryController {
 	return &SummaryController{
-		mysqlDB: mysqlDB,
-		logger:  logger,
+		mysqlDB:          mysqlDB,
+		config:           cfg,
+		summaryProcessor: summaryProcessor,
+		logger:           logger,
 	}
 }
 
@@ -119,6 +130,7 @@ func (c *SummaryController) GetFileSummaries(ctx *gin.Context) {
 }
 
 // GetEntitySummary returns a specific function or class summary
+// If the summary doesn't exist and on-demand generation is available, it will be generated
 func (c *SummaryController) GetEntitySummary(ctx *gin.Context) {
 	var req GetEntitySummaryRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -144,6 +156,17 @@ func (c *SummaryController) GetEntitySummary(ctx *gin.Context) {
 		return
 	}
 
+	// If not found, try to generate on-demand
+	if result == nil && c.summaryProcessor != nil && c.config != nil {
+		result, err = c.generateEntitySummaryOnDemand(ctx.Request.Context(), req.RepoName, req.FilePath, entityType, req.EntityName)
+		if err != nil {
+			c.logger.Debug("On-demand summary generation failed",
+				zap.String("entity", req.EntityName),
+				zap.Error(err))
+			// Fall through to return not found
+		}
+	}
+
 	if result == nil {
 		ctx.JSON(http.StatusNotFound, gin.H{"error": "summary not found"})
 		return
@@ -153,6 +176,7 @@ func (c *SummaryController) GetEntitySummary(ctx *gin.Context) {
 }
 
 // GetFileSummary returns the file-level summary for a file
+// If the summary doesn't exist and on-demand generation is available, it will be generated
 func (c *SummaryController) GetFileSummary(ctx *gin.Context) {
 	var req GetFileSummaryRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -170,6 +194,17 @@ func (c *SummaryController) GetFileSummary(ctx *gin.Context) {
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to query file summary: " + err.Error()})
 		return
+	}
+
+	// If not found, try to generate on-demand
+	if result == nil && c.summaryProcessor != nil && c.config != nil {
+		result, err = c.generateFileSummaryOnDemand(ctx.Request.Context(), req.RepoName, req.FilePath)
+		if err != nil {
+			c.logger.Debug("On-demand file summary generation failed",
+				zap.String("file", req.FilePath),
+				zap.Error(err))
+			// Fall through to return not found
+		}
 	}
 
 	if result == nil {
@@ -204,4 +239,45 @@ func (c *SummaryController) GetSummaryStats(ctx *gin.Context) {
 		RepoName: req.RepoName,
 		Stats:    stats,
 	})
+}
+
+// -----------------------------------------------------------------------------
+// On-Demand Generation Helpers
+// -----------------------------------------------------------------------------
+
+// generateEntitySummaryOnDemand generates a function or class summary on-demand
+func (c *SummaryController) generateEntitySummaryOnDemand(
+	ctx context.Context,
+	repoName string,
+	filePath string,
+	entityType summary.SummaryLevel,
+	entityName string,
+) (*summary.CodeSummary, error) {
+	repo, err := c.config.GetRepository(repoName)
+	if err != nil {
+		return nil, err
+	}
+
+	switch entityType {
+	case summary.LevelFunction:
+		return c.summaryProcessor.GenerateFunctionSummaryOnDemand(ctx, repo, filePath, entityName)
+	case summary.LevelClass:
+		return c.summaryProcessor.GenerateClassSummaryOnDemand(ctx, repo, filePath, entityName)
+	default:
+		return nil, nil
+	}
+}
+
+// generateFileSummaryOnDemand generates a file summary on-demand
+func (c *SummaryController) generateFileSummaryOnDemand(
+	ctx context.Context,
+	repoName string,
+	filePath string,
+) (*summary.CodeSummary, error) {
+	repo, err := c.config.GetRepository(repoName)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.summaryProcessor.GenerateFileSummaryOnDemand(ctx, repo, filePath)
 }

@@ -907,3 +907,165 @@ func (p *SummaryProcessor) extractSourceCode(repoPath, relativePath string, rng 
 
 	return strings.Join(lines, "\n")
 }
+
+// -----------------------------------------------------------------------------
+// On-Demand Summary Generation (for API requests)
+// -----------------------------------------------------------------------------
+
+// GenerateFunctionSummaryOnDemand generates a summary for a function by name
+// This is used when the API is called but no summary exists
+func (p *SummaryProcessor) GenerateFunctionSummaryOnDemand(
+	ctx context.Context,
+	repo *config.Repository,
+	filePath string,
+	functionName string,
+) (*summary.CodeSummary, error) {
+	if !p.config.Enabled {
+		return nil, fmt.Errorf("summary processor is disabled")
+	}
+
+	store, err := p.getOrCreateStore(repo.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	// Find the function node in the code graph
+	node, err := p.codeGraph.FindFunctionByName(ctx, filePath, functionName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find function %s in %s: %w", functionName, filePath, err)
+	}
+	if node == nil {
+		return nil, fmt.Errorf("function %s not found in %s", functionName, filePath)
+	}
+
+	// Generate the summary
+	if err := p.summarizeFunction(ctx, node, repo, store); err != nil {
+		return nil, fmt.Errorf("failed to generate function summary: %w", err)
+	}
+
+	// Retrieve and return the generated summary
+	entityID := strconv.FormatInt(int64(node.ID), 10)
+	return store.GetSummary(entityID, summary.LevelFunction)
+}
+
+// GenerateClassSummaryOnDemand generates a summary for a class by name
+// This is used when the API is called but no summary exists
+func (p *SummaryProcessor) GenerateClassSummaryOnDemand(
+	ctx context.Context,
+	repo *config.Repository,
+	filePath string,
+	className string,
+) (*summary.CodeSummary, error) {
+	if !p.config.Enabled {
+		return nil, fmt.Errorf("summary processor is disabled")
+	}
+
+	store, err := p.getOrCreateStore(repo.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	// Find the class node in the code graph
+	node, err := p.codeGraph.FindClassByName(ctx, filePath, className)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find class %s in %s: %w", className, filePath, err)
+	}
+	if node == nil {
+		return nil, fmt.Errorf("class %s not found in %s", className, filePath)
+	}
+
+	// First, ensure all methods in the class have summaries (for hierarchical summarization)
+	methods, _ := p.codeGraph.GetClassMethods(ctx, node.ID)
+	for _, method := range methods {
+		// Check if method summary exists
+		methodEntityID := strconv.FormatInt(int64(method.ID), 10)
+		existing, _ := store.GetSummary(methodEntityID, summary.LevelFunction)
+		if existing == nil {
+			// Generate method summary first
+			_ = p.summarizeFunction(ctx, method, repo, store)
+		}
+	}
+
+	// Generate the class summary
+	if err := p.summarizeClass(ctx, node, repo, store); err != nil {
+		return nil, fmt.Errorf("failed to generate class summary: %w", err)
+	}
+
+	// Retrieve and return the generated summary
+	entityID := strconv.FormatInt(int64(node.ID), 10)
+	return store.GetSummary(entityID, summary.LevelClass)
+}
+
+// GenerateFileSummaryOnDemand generates a summary for a file by path
+// This is used when the API is called but no summary exists
+func (p *SummaryProcessor) GenerateFileSummaryOnDemand(
+	ctx context.Context,
+	repo *config.Repository,
+	filePath string,
+) (*summary.CodeSummary, error) {
+	if !p.config.Enabled {
+		return nil, fmt.Errorf("summary processor is disabled")
+	}
+
+	// Skip unsupported files
+	if !isSupportedForSummary(filePath) {
+		return nil, fmt.Errorf("file type not supported for summarization: %s", filePath)
+	}
+
+	store, err := p.getOrCreateStore(repo.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	// Find the file in the code graph
+	fileNode, err := p.codeGraph.FindFileByPath(ctx, repo.Name, filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find file %s: %w", filePath, err)
+	}
+	if fileNode == nil {
+		return nil, fmt.Errorf("file %s not found in code graph", filePath)
+	}
+
+	// First, generate summaries for all functions and classes in the file
+	functions, _ := p.codeGraph.GetNodesByTypeAndFileID(ctx, ast.NodeTypeFunction, fileNode.FileID)
+	for _, fn := range functions {
+		fnEntityID := strconv.FormatInt(int64(fn.ID), 10)
+		existing, _ := store.GetSummary(fnEntityID, summary.LevelFunction)
+		if existing == nil {
+			_ = p.summarizeFunction(ctx, fn, repo, store)
+		}
+	}
+
+	classes, _ := p.codeGraph.GetNodesByTypeAndFileID(ctx, ast.NodeTypeClass, fileNode.FileID)
+	for _, cls := range classes {
+		clsEntityID := strconv.FormatInt(int64(cls.ID), 10)
+		existing, _ := store.GetSummary(clsEntityID, summary.LevelClass)
+		if existing == nil {
+			// Generate method summaries first
+			methods, _ := p.codeGraph.GetClassMethods(ctx, cls.ID)
+			for _, method := range methods {
+				methodEntityID := strconv.FormatInt(int64(method.ID), 10)
+				methodExisting, _ := store.GetSummary(methodEntityID, summary.LevelFunction)
+				if methodExisting == nil {
+					_ = p.summarizeFunction(ctx, method, repo, store)
+				}
+			}
+			_ = p.summarizeClass(ctx, cls, repo, store)
+		}
+	}
+
+	// Create FileContext for the file summary
+	fileCtx := &FileContext{
+		FileID:       fileNode.FileID,
+		FilePath:     filepath.Join(repo.Path, filePath),
+		RelativePath: filePath,
+	}
+
+	// Generate the file summary
+	if err := p.summarizeFile(ctx, fileCtx, repo, store); err != nil {
+		return nil, fmt.Errorf("failed to generate file summary: %w", err)
+	}
+
+	// Retrieve and return the generated summary
+	return store.GetFileSummary(filePath)
+}
