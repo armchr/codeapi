@@ -24,6 +24,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `make test-coverage-report` - Generate HTML coverage report
   - `make test-unit` - Run unit tests only (parsing, utilities, LSP)
 
+- **Flexible `function_id` parameter for call graph APIs**
+  - `function_id` now accepts numeric IDs, qualified names (`"ClassName.methodName"`), or simple function names
+  - Applies to `/codeapi/v1/callers`, `/codeapi/v1/callees`, and `/codeapi/v1/callgraph` endpoints
+  - Qualified names are automatically parsed: `"XStreamAccountDAO.addRootAccount"` → class="XStreamAccountDAO", function="addRootAccount"
+  - Backward compatible: numeric IDs still work as before
+
+- **On-demand summary generation for `/summaries/file` endpoint**
+  - When querying file summaries via `/codeapi/v1/summaries/file`, if no summaries exist, they are automatically generated on-demand
+  - Generates summaries for all functions and classes in the file using the configured LLM
+  - Requires summary processor to be enabled (same as entity and file summary endpoints)
+
 - **Java LSP support** with Eclipse JDT Language Server
   - Full LSP integration for semantic analysis (call hierarchies, symbol resolution)
   - Java LSP client (`pkg/lsp/java_client.go`) with external module detection for Maven, Gradle, and JDK dependencies

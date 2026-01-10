@@ -849,21 +849,24 @@ func (a *graphAnalyzerImpl) findFunctionID(ctx context.Context, repoName, filePa
 	params := map[string]any{"name": functionName, "repo": repoName}
 
 	if className != "" {
+		// Traverse from FileScope (which has repo) through to Class and then Function
 		query = `
-			MATCH (c:Class {name: $className})-[:CONTAINS]->(f:Function {name: $name})
-			WHERE c.repo = $repo
+			MATCH (fs:FileScope {repo: $repo})-[:CONTAINS*]->(c:Class {name: $className})-[:CONTAINS*]->(f:Function {name: $name})
 		`
 		params["className"] = className
+		if filePath != "" {
+			query += " WHERE fs.filePath = $path"
+			params["path"] = filePath
+		}
 	} else {
+		// Search for function directly under FileScope
 		query = `
-			MATCH (f:Function {name: $name})
-			WHERE f.repo = $repo
+			MATCH (fs:FileScope {repo: $repo})-[:CONTAINS*]->(f:Function {name: $name})
 		`
-	}
-
-	if filePath != "" {
-		query += " AND f.path = $path"
-		params["path"] = filePath
+		if filePath != "" {
+			query += " WHERE fs.filePath = $path"
+			params["path"] = filePath
+		}
 	}
 
 	query += " RETURN f.id AS id LIMIT 1"

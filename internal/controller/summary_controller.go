@@ -88,7 +88,8 @@ func (c *SummaryController) getStore(repoName string) (*db.SummaryStore, error) 
 	return db.NewSummaryStore(c.mysqlDB, repoName, c.logger)
 }
 
-// GetFileSummaries returns all summaries for a file, optionally filtered by entity type
+// GetFileSummaries returns all summaries for a file, optionally filtered by entity type.
+// If no summaries exist and on-demand generation is available, summaries will be generated.
 func (c *SummaryController) GetFileSummaries(ctx *gin.Context) {
 	var req GetFileSummariesRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -103,10 +104,11 @@ func (c *SummaryController) GetFileSummaries(ctx *gin.Context) {
 	}
 
 	var summaries []*summary.CodeSummary
+	var entityType summary.SummaryLevel
 
 	if req.EntityType != "" {
 		// Filter by entity type
-		entityType := summary.ParseSummaryLevel(req.EntityType)
+		entityType = summary.ParseSummaryLevel(req.EntityType)
 		if entityType == 0 {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid entity_type: must be 'function', 'class', 'file', 'folder', or 'project'"})
 			return
@@ -120,6 +122,31 @@ func (c *SummaryController) GetFileSummaries(ctx *gin.Context) {
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to query summaries: " + err.Error()})
 		return
+	}
+
+	// If no summaries found and on-demand generation is available, generate them
+	if len(summaries) == 0 {
+		if c.summaryProcessor == nil {
+			c.logger.Info("On-demand generation skipped: summary processor not available")
+		} else if c.config == nil {
+			c.logger.Info("On-demand generation skipped: config not available")
+		} else {
+			c.logger.Info("Attempting on-demand summary generation",
+				zap.String("file", req.FilePath),
+				zap.String("entityType", req.EntityType))
+			generated, genErr := c.generateFileSummariesOnDemand(ctx.Request.Context(), req.RepoName, req.FilePath, entityType)
+			if genErr != nil {
+				c.logger.Warn("On-demand file summaries generation failed",
+					zap.String("file", req.FilePath),
+					zap.Error(genErr))
+				// Fall through to return empty result
+			} else if len(generated) > 0 {
+				c.logger.Info("On-demand generation completed",
+					zap.String("file", req.FilePath),
+					zap.Int("count", len(generated)))
+				summaries = generated
+			}
+		}
 	}
 
 	ctx.JSON(http.StatusOK, GetFileSummariesResponse{
@@ -280,4 +307,20 @@ func (c *SummaryController) generateFileSummaryOnDemand(
 	}
 
 	return c.summaryProcessor.GenerateFileSummaryOnDemand(ctx, repo, filePath)
+}
+
+// generateFileSummariesOnDemand generates summaries for all entities in a file on-demand
+// If entityType is specified, only generates summaries for that type
+func (c *SummaryController) generateFileSummariesOnDemand(
+	ctx context.Context,
+	repoName string,
+	filePath string,
+	entityType summary.SummaryLevel,
+) ([]*summary.CodeSummary, error) {
+	repo, err := c.config.GetRepository(repoName)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.summaryProcessor.GenerateFileSummariesOnDemand(ctx, repo, filePath, entityType)
 }

@@ -1,7 +1,10 @@
 package controller
 
 import (
+	"encoding/json"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/armchr/codeapi/internal/codeapi"
 	"github.com/armchr/codeapi/internal/model/ast"
@@ -9,6 +12,48 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
+
+// FlexibleFunctionID can be unmarshaled from either a number or a string.
+// If string, it can be:
+//   - A numeric string: "12345" -> ID=12345
+//   - A qualified name: "ClassName.methodName" -> ClassName="ClassName", FunctionName="methodName"
+//   - A simple name: "main" -> FunctionName="main"
+type FlexibleFunctionID struct {
+	ID           int64
+	FunctionName string
+	ClassName    string
+}
+
+func (f *FlexibleFunctionID) UnmarshalJSON(data []byte) error {
+	// Try as number first
+	var num int64
+	if err := json.Unmarshal(data, &num); err == nil {
+		f.ID = num
+		return nil
+	}
+
+	// Try as string
+	var str string
+	if err := json.Unmarshal(data, &str); err != nil {
+		return err
+	}
+
+	// Check if it's a numeric string
+	if num, err := strconv.ParseInt(str, 10, 64); err == nil {
+		f.ID = num
+		return nil
+	}
+
+	// Check if it's a qualified name (ClassName.methodName)
+	if idx := strings.LastIndex(str, "."); idx > 0 {
+		f.ClassName = str[:idx]
+		f.FunctionName = str[idx+1:]
+	} else {
+		f.FunctionName = str
+	}
+
+	return nil
+}
 
 // CodeAPIController handles HTTP requests for the CodeAPI
 type CodeAPIController struct {
@@ -92,16 +137,20 @@ type GetMethodRequest struct {
 	MethodID int64  `json:"method_id" binding:"required"`
 }
 
-// GetCallGraphRequest is the request for getting a call graph
+// GetCallGraphRequest is the request for getting a call graph.
+// function_id accepts either:
+//   - A numeric ID: 12345 or "12345"
+//   - A qualified name: "ClassName.methodName"
+//   - A simple function name: "main"
 type GetCallGraphRequest struct {
-	RepoName        string `json:"repo_name" binding:"required"`
-	FunctionID      int64  `json:"function_id"`
-	FunctionName    string `json:"function_name"`
-	ClassName       string `json:"class_name"`
-	FilePath        string `json:"file_path"`
-	Direction       string `json:"direction"` // "outgoing", "incoming", "both"
-	MaxDepth        int    `json:"max_depth"`
-	IncludeExternal bool   `json:"include_external"`
+	RepoName        string              `json:"repo_name" binding:"required"`
+	FunctionID      *FlexibleFunctionID `json:"function_id"`
+	FunctionName    string              `json:"function_name"`
+	ClassName       string              `json:"class_name"`
+	FilePath        string              `json:"file_path"`
+	Direction       string              `json:"direction"` // "outgoing", "incoming", "both"
+	MaxDepth        int                 `json:"max_depth"`
+	IncludeExternal bool                `json:"include_external"`
 }
 
 // GetDataDependentsRequest is the request for getting data dependents
@@ -353,6 +402,27 @@ func (c *CodeAPIController) GetClassFields(ctx *gin.Context) {
 // Analyzer Endpoints
 // -----------------------------------------------------------------------------
 
+// resolveFunctionRef extracts the effective function ID, name, and class from the request.
+// Returns (id, functionName, className) where id > 0 means use ID lookup, otherwise use name lookup.
+func (req *GetCallGraphRequest) resolveFunctionRef() (int64, string, string) {
+	// Check if FunctionID was provided
+	if req.FunctionID != nil {
+		if req.FunctionID.ID > 0 {
+			return req.FunctionID.ID, "", ""
+		}
+		// FunctionID contains a parsed name
+		funcName := req.FunctionID.FunctionName
+		className := req.FunctionID.ClassName
+		// Allow explicit class_name to override
+		if req.ClassName != "" {
+			className = req.ClassName
+		}
+		return 0, funcName, className
+	}
+	// Fall back to explicit function_name field
+	return 0, req.FunctionName, req.ClassName
+}
+
 // GetCallGraph returns the call graph for a function
 func (c *CodeAPIController) GetCallGraph(ctx *gin.Context) {
 	var req GetCallGraphRequest
@@ -382,12 +452,13 @@ func (c *CodeAPIController) GetCallGraph(ctx *gin.Context) {
 	var callGraph *codeapi.CallGraph
 	var err error
 
-	if req.FunctionID != 0 {
-		callGraph, err = c.api.Analyzer().GetCallGraph(ctx.Request.Context(), ast.NodeID(req.FunctionID), opts)
-	} else if req.FunctionName != "" {
+	funcID, funcName, className := req.resolveFunctionRef()
+	if funcID > 0 {
+		callGraph, err = c.api.Analyzer().GetCallGraph(ctx.Request.Context(), ast.NodeID(funcID), opts)
+	} else if funcName != "" {
 		callGraph, err = c.api.Analyzer().GetCallGraphByName(
 			ctx.Request.Context(),
-			req.RepoName, req.FilePath, req.ClassName, req.FunctionName,
+			req.RepoName, req.FilePath, className, funcName,
 			opts,
 		)
 	} else {
@@ -410,16 +481,33 @@ func (c *CodeAPIController) GetCallers(ctx *gin.Context) {
 		return
 	}
 
-	if req.FunctionID == 0 {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "function_id is required"})
-		return
-	}
-
 	if req.MaxDepth <= 0 {
 		req.MaxDepth = 3
 	}
 
-	callGraph, err := c.api.Analyzer().GetCallers(ctx.Request.Context(), ast.NodeID(req.FunctionID), req.MaxDepth)
+	opts := codeapi.CallGraphOptions{
+		Direction:       codeapi.DirectionIncoming,
+		MaxDepth:        req.MaxDepth,
+		IncludeExternal: req.IncludeExternal,
+	}
+
+	var callGraph *codeapi.CallGraph
+	var err error
+
+	funcID, funcName, className := req.resolveFunctionRef()
+	if funcID > 0 {
+		callGraph, err = c.api.Analyzer().GetCallGraph(ctx.Request.Context(), ast.NodeID(funcID), opts)
+	} else if funcName != "" {
+		callGraph, err = c.api.Analyzer().GetCallGraphByName(
+			ctx.Request.Context(),
+			req.RepoName, req.FilePath, className, funcName,
+			opts,
+		)
+	} else {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "either function_id or function_name is required"})
+		return
+	}
+
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -435,16 +523,33 @@ func (c *CodeAPIController) GetCallees(ctx *gin.Context) {
 		return
 	}
 
-	if req.FunctionID == 0 {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "function_id is required"})
-		return
-	}
-
 	if req.MaxDepth <= 0 {
 		req.MaxDepth = 3
 	}
 
-	callGraph, err := c.api.Analyzer().GetCallees(ctx.Request.Context(), ast.NodeID(req.FunctionID), req.MaxDepth)
+	opts := codeapi.CallGraphOptions{
+		Direction:       codeapi.DirectionOutgoing,
+		MaxDepth:        req.MaxDepth,
+		IncludeExternal: req.IncludeExternal,
+	}
+
+	var callGraph *codeapi.CallGraph
+	var err error
+
+	funcID, funcName, className := req.resolveFunctionRef()
+	if funcID > 0 {
+		callGraph, err = c.api.Analyzer().GetCallGraph(ctx.Request.Context(), ast.NodeID(funcID), opts)
+	} else if funcName != "" {
+		callGraph, err = c.api.Analyzer().GetCallGraphByName(
+			ctx.Request.Context(),
+			req.RepoName, req.FilePath, className, funcName,
+			opts,
+		)
+	} else {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "either function_id or function_name is required"})
+		return
+	}
+
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

@@ -733,9 +733,12 @@ Get the call graph for a function.
 
 #### POST /codeapi/v1/callers
 
-Get functions that call a specific function (incoming call graph).
+Get functions that call a specific function (incoming call graph). The `function_id` field is flexible and accepts:
+- A numeric ID: `11111`
+- A qualified name: `"ClassName.methodName"`
+- A simple function name: `"main"`
 
-**Request:**
+**Request (by numeric ID):**
 ```json
 {
   "repo_name": "spring-petclinic",
@@ -744,11 +747,36 @@ Get functions that call a specific function (incoming call graph).
 }
 ```
 
+**Request (by qualified name):**
+```json
+{
+  "repo_name": "spring-petclinic",
+  "function_id": "PetRepository.findByOwnerId",
+  "max_depth": 3
+}
+```
+
+**Request (using separate fields):**
+```json
+{
+  "repo_name": "spring-petclinic",
+  "function_name": "findByOwnerId",
+  "class_name": "PetRepository",
+  "max_depth": 3
+}
+```
+
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `repo_name` | string | Yes | Name of the repository |
-| `function_id` | int | Yes | Function node ID |
+| `function_id` | int64/string | No* | Numeric ID or qualified name (e.g., `"Class.method"`) |
+| `function_name` | string | No* | Function/method name |
+| `class_name` | string | No | Class name (for methods) |
+| `file_path` | string | No | File path to narrow search |
 | `max_depth` | int | No | Maximum traversal depth (default: 3) |
+| `include_external` | bool | No | Include external function calls |
+
+*Either `function_id` or `function_name` is required.
 
 **Response:**
 ```json
@@ -761,9 +789,12 @@ Get functions that call a specific function (incoming call graph).
 
 #### POST /codeapi/v1/callees
 
-Get functions called by a specific function (outgoing call graph).
+Get functions called by a specific function (outgoing call graph). The `function_id` field is flexible and accepts:
+- A numeric ID: `11111`
+- A qualified name: `"ClassName.methodName"`
+- A simple function name: `"main"`
 
-**Request:**
+**Request (by numeric ID):**
 ```json
 {
   "repo_name": "spring-petclinic",
@@ -772,11 +803,36 @@ Get functions called by a specific function (outgoing call graph).
 }
 ```
 
+**Request (by qualified name):**
+```json
+{
+  "repo_name": "spring-petclinic",
+  "function_id": "OwnerController.getOwnerPets",
+  "max_depth": 3
+}
+```
+
+**Request (using separate fields):**
+```json
+{
+  "repo_name": "spring-petclinic",
+  "function_name": "getOwnerPets",
+  "class_name": "OwnerController",
+  "max_depth": 3
+}
+```
+
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `repo_name` | string | Yes | Name of the repository |
-| `function_id` | int | Yes | Function node ID |
+| `function_id` | int64/string | No* | Numeric ID or qualified name (e.g., `"Class.method"`) |
+| `function_name` | string | No* | Function/method name |
+| `class_name` | string | No | Class name (for methods) |
+| `file_path` | string | No | File path to narrow search |
 | `max_depth` | int | No | Maximum traversal depth (default: 3) |
+| `include_external` | bool | No | Include external function calls |
+
+*Either `function_id` or `function_name` is required.
 
 **Response:**
 ```json
@@ -978,7 +1034,7 @@ Get methods that access a specific field.
 
 These endpoints query LLM-generated summaries for code entities.
 
-**On-Demand Generation:** If a summary doesn't exist when requested via `/summaries/entity` or `/summaries/file/summary`, the system will automatically generate it using the configured LLM (if summary processor is enabled). This may take a few seconds for the first request.
+**On-Demand Generation:** If a summary doesn't exist when requested via `/summaries/entity`, `/summaries/file`, or `/summaries/file/summary`, the system will automatically generate it using the configured LLM (if summary processor is enabled). This may take a few seconds for the first request.
 
 ---
 

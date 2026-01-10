@@ -914,16 +914,13 @@ func (p *SummaryProcessor) extractSourceCode(repoPath, relativePath string, rng 
 
 // GenerateFunctionSummaryOnDemand generates a summary for a function by name
 // This is used when the API is called but no summary exists
+// Note: This does not check p.config.Enabled since on-demand generation should always work
 func (p *SummaryProcessor) GenerateFunctionSummaryOnDemand(
 	ctx context.Context,
 	repo *config.Repository,
 	filePath string,
 	functionName string,
 ) (*summary.CodeSummary, error) {
-	if !p.config.Enabled {
-		return nil, fmt.Errorf("summary processor is disabled")
-	}
-
 	store, err := p.getOrCreateStore(repo.Name)
 	if err != nil {
 		return nil, err
@@ -950,16 +947,13 @@ func (p *SummaryProcessor) GenerateFunctionSummaryOnDemand(
 
 // GenerateClassSummaryOnDemand generates a summary for a class by name
 // This is used when the API is called but no summary exists
+// Note: This does not check p.config.Enabled since on-demand generation should always work
 func (p *SummaryProcessor) GenerateClassSummaryOnDemand(
 	ctx context.Context,
 	repo *config.Repository,
 	filePath string,
 	className string,
 ) (*summary.CodeSummary, error) {
-	if !p.config.Enabled {
-		return nil, fmt.Errorf("summary processor is disabled")
-	}
-
 	store, err := p.getOrCreateStore(repo.Name)
 	if err != nil {
 		return nil, err
@@ -998,15 +992,12 @@ func (p *SummaryProcessor) GenerateClassSummaryOnDemand(
 
 // GenerateFileSummaryOnDemand generates a summary for a file by path
 // This is used when the API is called but no summary exists
+// Note: This does not check p.config.Enabled since on-demand generation should always work
 func (p *SummaryProcessor) GenerateFileSummaryOnDemand(
 	ctx context.Context,
 	repo *config.Repository,
 	filePath string,
 ) (*summary.CodeSummary, error) {
-	if !p.config.Enabled {
-		return nil, fmt.Errorf("summary processor is disabled")
-	}
-
 	// Skip unsupported files
 	if !isSupportedForSummary(filePath) {
 		return nil, fmt.Errorf("file type not supported for summarization: %s", filePath)
@@ -1068,4 +1059,99 @@ func (p *SummaryProcessor) GenerateFileSummaryOnDemand(
 
 	// Retrieve and return the generated summary
 	return store.GetFileSummary(filePath)
+}
+
+// GenerateFileSummariesOnDemand generates summaries for all entities in a file.
+// If entityType is specified (non-zero), only generates summaries for that type.
+// Returns the list of generated summaries.
+// Note: This does not check p.config.Enabled since on-demand generation should always work
+func (p *SummaryProcessor) GenerateFileSummariesOnDemand(
+	ctx context.Context,
+	repo *config.Repository,
+	filePath string,
+	entityType summary.SummaryLevel,
+) ([]*summary.CodeSummary, error) {
+	// Skip unsupported files
+	if !isSupportedForSummary(filePath) {
+		return nil, fmt.Errorf("file type not supported for summarization: %s", filePath)
+	}
+
+	store, err := p.getOrCreateStore(repo.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	// Find the file in the code graph
+	p.logger.Debug("Looking up file in code graph",
+		zap.String("repo", repo.Name),
+		zap.String("filePath", filePath))
+	fileNode, err := p.codeGraph.FindFileByPath(ctx, repo.Name, filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find file %s: %w", filePath, err)
+	}
+	if fileNode == nil {
+		return nil, fmt.Errorf("file %s not found in code graph", filePath)
+	}
+	p.logger.Debug("Found file in code graph",
+		zap.Int32("fileID", fileNode.FileID),
+		zap.Int64("nodeID", int64(fileNode.ID)))
+
+	var generatedSummaries []*summary.CodeSummary
+
+	// Generate function summaries if requested or if no filter
+	if entityType == 0 || entityType == summary.LevelFunction {
+		functions, _ := p.codeGraph.GetNodesByTypeAndFileID(ctx, ast.NodeTypeFunction, fileNode.FileID)
+		for _, fn := range functions {
+			fnEntityID := strconv.FormatInt(int64(fn.ID), 10)
+			existing, _ := store.GetSummary(fnEntityID, summary.LevelFunction)
+			if existing == nil {
+				if err := p.summarizeFunction(ctx, fn, repo, store); err != nil {
+					p.logger.Debug("Failed to generate function summary",
+						zap.String("function", fn.Name),
+						zap.Error(err))
+					continue
+				}
+				// Retrieve the generated summary
+				if generated, _ := store.GetSummary(fnEntityID, summary.LevelFunction); generated != nil {
+					generatedSummaries = append(generatedSummaries, generated)
+				}
+			} else {
+				generatedSummaries = append(generatedSummaries, existing)
+			}
+		}
+	}
+
+	// Generate class summaries if requested or if no filter
+	if entityType == 0 || entityType == summary.LevelClass {
+		classes, _ := p.codeGraph.GetNodesByTypeAndFileID(ctx, ast.NodeTypeClass, fileNode.FileID)
+		for _, cls := range classes {
+			clsEntityID := strconv.FormatInt(int64(cls.ID), 10)
+			existing, _ := store.GetSummary(clsEntityID, summary.LevelClass)
+			if existing == nil {
+				// First ensure all methods have summaries
+				methods, _ := p.codeGraph.GetClassMethods(ctx, cls.ID)
+				for _, method := range methods {
+					methodEntityID := strconv.FormatInt(int64(method.ID), 10)
+					methodExisting, _ := store.GetSummary(methodEntityID, summary.LevelFunction)
+					if methodExisting == nil {
+						_ = p.summarizeFunction(ctx, method, repo, store)
+					}
+				}
+				if err := p.summarizeClass(ctx, cls, repo, store); err != nil {
+					p.logger.Debug("Failed to generate class summary",
+						zap.String("class", cls.Name),
+						zap.Error(err))
+					continue
+				}
+				// Retrieve the generated summary
+				if generated, _ := store.GetSummary(clsEntityID, summary.LevelClass); generated != nil {
+					generatedSummaries = append(generatedSummaries, generated)
+				}
+			} else {
+				generatedSummaries = append(generatedSummaries, existing)
+			}
+		}
+	}
+
+	return generatedSummaries, nil
 }

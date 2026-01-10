@@ -918,35 +918,60 @@ POST /codeapi/v1/callgraph
 
 #### Get Callers
 
-Get functions that call a specific function.
+Get functions that call a specific function. The `function_id` field is flexible and accepts:
+- A numeric ID: `21474836481`
+- A qualified name: `"ClassName.methodName"`
+- A simple function name: `"main"`
 
 ```
 POST /codeapi/v1/callers
 ```
 
-**Request:**
+**Request (by numeric ID):**
 ```json
 {
   "repo_name": "my-project",
-  "function_id": "func-789"
+  "function_id": 21474836481
 }
 ```
+
+**Request (by qualified name):**
+```json
+{
+  "repo_name": "jgnash",
+  "function_id": "XStreamAccountDAO.addRootAccount"
+}
+```
+
+**Request (using separate fields):**
+```json
+{
+  "repo_name": "my-project",
+  "function_name": "processRequest",
+  "class_name": "RequestHandler",
+  "file_path": "/path/to/handler.go"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `repo_name` | string | Yes | Repository name |
+| `function_id` | int64/string | No* | Numeric ID or qualified name (e.g., `"Class.method"`) |
+| `function_name` | string | No* | Function/method name |
+| `class_name` | string | No | Class name (for methods) |
+| `file_path` | string | No | File path to narrow search |
+| `max_depth` | int | No | Max traversal depth (default: 3) |
+
+*Either `function_id` or `function_name` is required.
 
 **Response:**
 ```json
 {
-  "callers": [
-    {
-      "id": "func-100",
-      "name": "main",
-      "file_path": "src/main.go"
-    },
-    {
-      "id": "func-101",
-      "name": "handleRequest",
-      "file_path": "src/handler.go"
-    }
-  ]
+  "call_graph": {
+    "nodes": [...],
+    "edges": [...],
+    "root_id": 21474836481
+  }
 }
 ```
 
@@ -954,35 +979,59 @@ POST /codeapi/v1/callers
 
 #### Get Callees
 
-Get functions called by a specific function.
+Get functions called by a specific function. The `function_id` field is flexible and accepts:
+- A numeric ID: `21474836481`
+- A qualified name: `"ClassName.methodName"`
+- A simple function name: `"main"`
 
 ```
 POST /codeapi/v1/callees
 ```
 
-**Request:**
+**Request (by numeric ID):**
 ```json
 {
   "repo_name": "my-project",
-  "function_id": "func-789"
+  "function_id": 21474836481
 }
 ```
+
+**Request (by qualified name):**
+```json
+{
+  "repo_name": "jgnash",
+  "function_id": "Workbook.addTableSection"
+}
+```
+
+**Request (using separate fields):**
+```json
+{
+  "repo_name": "my-project",
+  "function_name": "main",
+  "file_path": "/path/to/main.go"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `repo_name` | string | Yes | Repository name |
+| `function_id` | int64/string | No* | Numeric ID or qualified name (e.g., `"Class.method"`) |
+| `function_name` | string | No* | Function/method name |
+| `class_name` | string | No | Class name (for methods) |
+| `file_path` | string | No | File path to narrow search |
+| `max_depth` | int | No | Max traversal depth (default: 3) |
+
+*Either `function_id` or `function_name` is required.
 
 **Response:**
 ```json
 {
-  "callees": [
-    {
-      "id": "func-200",
-      "name": "validateInput",
-      "file_path": "src/validation.go"
-    },
-    {
-      "id": "func-201",
-      "name": "saveToDatabase",
-      "file_path": "src/db.go"
-    }
-  ]
+  "call_graph": {
+    "nodes": [...],
+    "edges": [...],
+    "root_id": 21474836481
+  }
 }
 ```
 
@@ -1246,7 +1295,7 @@ GET /codeapi/v1/health
 These endpoints query LLM-generated code summaries. Summaries can be generated in two ways:
 
 1. **Batch Generation**: During index building when `index_building.enable_summary` is set to `true`
-2. **On-Demand Generation**: When querying via `/summaries/entity` or `/summaries/file/summary`, if a summary doesn't exist, it will be automatically generated using the configured LLM (requires summary processor to be enabled)
+2. **On-Demand Generation**: When querying via `/summaries/entity`, `/summaries/file`, or `/summaries/file/summary`, if a summary doesn't exist, it will be automatically generated using the configured LLM (requires summary processor to be enabled)
 
 On-demand generation may take a few seconds for the first request as it calls the LLM to generate the summary.
 

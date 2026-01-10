@@ -2300,13 +2300,13 @@ func (cg *CodeGraph) FindClassByName(ctx context.Context, filePath string, class
 // FindFileByPath finds a file node by its path in a repository
 func (cg *CodeGraph) FindFileByPath(ctx context.Context, repoName string, filePath string) (*ast.Node, error) {
 	query := `
-		MATCH (f:FileScope {repo: $repo, filePath: $filePath})
+		MATCH (f:FileScope {repo: $repo, path: $path})
 		RETURN f
 		LIMIT 1
 	`
 	nodes, err := cg.readNodesByQuery(ctx, "f", query, map[string]any{
-		"repo":     repoName,
-		"filePath": filePath,
+		"repo": repoName,
+		"path": filePath,
 	})
 	if err != nil {
 		return nil, err

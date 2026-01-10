@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 
 	"github.com/armchr/codeapi/internal/config"
@@ -14,10 +15,11 @@ import (
 
 // EmbeddingProcessor implements FileProcessor for code chunk embeddings
 type EmbeddingProcessor struct {
-	chunkService         *vector.CodeChunkService
-	logger               *zap.Logger
-	chunkCount           atomic.Int64
+	chunkService          *vector.CodeChunkService
+	logger                *zap.Logger
+	chunkCount            atomic.Int64
 	collectionInitialized map[string]bool // Track which collections have been created
+	collectionMu          sync.Mutex      // Protects collectionInitialized map
 }
 
 // NewEmbeddingProcessor creates a new embedding processor
@@ -41,10 +43,14 @@ func (ep *EmbeddingProcessor) Init(ctx context.Context, repo *config.Repository)
 
 // ensureCollection ensures the Qdrant collection exists for the repository
 func (ep *EmbeddingProcessor) ensureCollection(ctx context.Context, collectionName string) error {
-	// Check if we've already initialized this collection
+	// Check if we've already initialized this collection (with lock)
+	ep.collectionMu.Lock()
 	if ep.collectionInitialized[collectionName] {
+		ep.collectionMu.Unlock()
 		return nil
 	}
+	// Keep lock while we check/create collection to prevent race conditions
+	defer ep.collectionMu.Unlock()
 
 	// Check if collection exists in Qdrant
 	exists, err := ep.chunkService.GetVectorDB().CollectionExists(ctx, collectionName)

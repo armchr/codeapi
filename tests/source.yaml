@@ -21,3 +21,6 @@ source:
     - name: spring-petclinic
       path: ${CODEAPI_TEST_DIR}/repos/spring-petclinic
       language: java
+    - name: jgnash
+      path: ${CODEAPI_TEST_DIR}/repos/jgnash
+      language: java

@@ -307,13 +307,16 @@ func GetIndexBuildingOptions(cfg *config.Config) ServiceInitOptions {
 
 // GetServerModeOptions returns ServiceInitOptions configured for server mode
 func GetServerModeOptions(cfg *config.Config) ServiceInitOptions {
+	// Enable summary services if LLM is configured (for on-demand summary generation)
+	enableSummary := cfg.Summary.LLMProvider != "" && cfg.Summary.LLMModel != ""
+
 	return ServiceInitOptions{
 		EnableMySQL:       cfg.MySQL.Host != "",
 		RequireMySQL:      false, // Optional in server mode
 		EnableCodeGraph:   cfg.App.CodeGraph,
 		EnableEmbeddings:  cfg.Qdrant.Host != "" && cfg.Ollama.URL != "",
-		EnableRepoService: true,  // Always needed in server mode
-		EnableSummary:     false, // Summary is only used during index building
+		EnableRepoService: true,         // Always needed in server mode
+		EnableSummary:     enableSummary, // Enable for on-demand summary generation if LLM is configured
 	}
 }
 

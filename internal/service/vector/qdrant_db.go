@@ -93,7 +93,20 @@ func (q *QdrantDatabase) UpsertChunks(ctx context.Context, collectionName string
 
 	for _, chunk := range chunks {
 		if len(chunk.Embedding) == 0 {
-			q.logger.Warn("Skipping chunk without embedding", zap.String("id", chunk.ID))
+			// Log detailed info to help diagnose why embedding is missing
+			contentLen := len(chunk.Content)
+			hasSignature := chunk.Signature != ""
+			hasName := chunk.Name != ""
+			q.logger.Warn("Skipping chunk without embedding - possible causes: empty content, embedding generation failed, or inherited from previous failed indexing",
+				zap.String("id", chunk.ID),
+				zap.String("file_path", chunk.FilePath),
+				zap.String("chunk_type", string(chunk.ChunkType)),
+				zap.String("name", chunk.Name),
+				zap.Int("content_length", contentLen),
+				zap.Bool("has_signature", hasSignature),
+				zap.Bool("has_name", hasName),
+				zap.Int("start_line", chunk.StartLine),
+				zap.Int("end_line", chunk.EndLine))
 			continue
 		}
 

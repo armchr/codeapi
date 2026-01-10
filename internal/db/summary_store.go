@@ -349,13 +349,13 @@ func (s *SummaryStore) GetStats() (*SummaryStats, error) {
 	query := fmt.Sprintf(`
 		SELECT
 			COUNT(*) as total,
-			SUM(CASE WHEN entity_type = 'function' THEN 1 ELSE 0 END) as functions,
-			SUM(CASE WHEN entity_type = 'class' THEN 1 ELSE 0 END) as classes,
-			SUM(CASE WHEN entity_type = 'file' THEN 1 ELSE 0 END) as files,
-			SUM(CASE WHEN entity_type = 'folder' THEN 1 ELSE 0 END) as folders,
-			SUM(CASE WHEN entity_type = 'project' THEN 1 ELSE 0 END) as projects,
-			SUM(prompt_tokens) as total_prompt_tokens,
-			SUM(output_tokens) as total_output_tokens
+			COALESCE(SUM(CASE WHEN entity_type = 'function' THEN 1 ELSE 0 END), 0) as functions,
+			COALESCE(SUM(CASE WHEN entity_type = 'class' THEN 1 ELSE 0 END), 0) as classes,
+			COALESCE(SUM(CASE WHEN entity_type = 'file' THEN 1 ELSE 0 END), 0) as files,
+			COALESCE(SUM(CASE WHEN entity_type = 'folder' THEN 1 ELSE 0 END), 0) as folders,
+			COALESCE(SUM(CASE WHEN entity_type = 'project' THEN 1 ELSE 0 END), 0) as projects,
+			COALESCE(SUM(prompt_tokens), 0) as total_prompt_tokens,
+			COALESCE(SUM(output_tokens), 0) as total_output_tokens
 		FROM %s
 	`, tableName)
 

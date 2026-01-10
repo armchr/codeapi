@@ -109,9 +109,19 @@ func (ccs *CodeChunkService) ProcessFileWithContent(ctx context.Context, filePat
 
 	for _, chunk := range chunks {
 		if existingChunk, exists := existingChunkMap[chunk.ID]; exists {
-			// Chunk already exists, reuse its embedding
-			chunk.Embedding = existingChunk.Embedding
-			existingMatchedChunks = append(existingMatchedChunks, chunk)
+			// Chunk already exists - check if it has a valid embedding
+			if len(existingChunk.Embedding) == 0 {
+				// Existing chunk has no embedding (from previous failed run) - regenerate
+				ccs.logger.Debug("Existing chunk has empty embedding, will regenerate",
+					zap.String("id", chunk.ID),
+					zap.String("file", chunk.FilePath),
+					zap.String("type", string(chunk.ChunkType)))
+				newChunks = append(newChunks, chunk)
+			} else {
+				// Reuse valid embedding
+				chunk.Embedding = existingChunk.Embedding
+				existingMatchedChunks = append(existingMatchedChunks, chunk)
+			}
 		} else {
 			// New chunk, needs embedding
 			newChunks = append(newChunks, chunk)
@@ -213,9 +223,19 @@ func (ccs *CodeChunkService) ProcessFileWithContentAndFileID(ctx context.Context
 
 	for _, chunk := range chunks {
 		if existingChunk, exists := existingChunkMap[chunk.ID]; exists {
-			// Chunk already exists, reuse its embedding
-			chunk.Embedding = existingChunk.Embedding
-			existingMatchedChunks = append(existingMatchedChunks, chunk)
+			// Chunk already exists - check if it has a valid embedding
+			if len(existingChunk.Embedding) == 0 {
+				// Existing chunk has no embedding (from previous failed run) - regenerate
+				ccs.logger.Debug("Existing chunk has empty embedding, will regenerate",
+					zap.String("id", chunk.ID),
+					zap.String("file", chunk.FilePath),
+					zap.String("type", string(chunk.ChunkType)))
+				newChunks = append(newChunks, chunk)
+			} else {
+				// Reuse valid embedding
+				chunk.Embedding = existingChunk.Embedding
+				existingMatchedChunks = append(existingMatchedChunks, chunk)
+			}
 		} else {
 			// New chunk, needs embedding
 			newChunks = append(newChunks, chunk)
@@ -599,6 +619,9 @@ func (ccs *CodeChunkService) generateAndPrepareEmbeddings(ctx context.Context, c
 						zap.Bool("with_context", true))
 				*/
 			}
+
+			// Update needsOneEmbedding to only include chunks that got embeddings
+			needsOneEmbedding = validChunks
 		}
 	}
 

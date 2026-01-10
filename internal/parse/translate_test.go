@@ -323,7 +323,8 @@ func TestTranslateFromSyntaxTree_PopScope(t *testing.T) {
 }
 
 func TestTranslateFromSyntaxTree_PopScope_Underflow(t *testing.T) {
-	logger, _ := zap.NewDevelopment()
+	// Use no-op logger to suppress expected ERROR log during underflow test
+	logger := zap.NewNop()
 	translator := NewTranslateFromSyntaxTree(1, 1, nil, []byte(""), logger)
 
 	// Pop all scopes including the initial one
