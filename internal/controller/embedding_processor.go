@@ -90,9 +90,11 @@ func (ep *EmbeddingProcessor) ProcessFile(ctx context.Context, repo *config.Repo
 		return nil // Continue processing other files
 	}
 
+	// Use RelativePath instead of absolute FilePath for storage in Qdrant
+	// This makes chunks portable across machines and avoids redundant path prefix
 	chunks, err := ep.chunkService.ProcessFileWithContentAndFileID(
 		ctx,
-		fileCtx.FilePath,
+		fileCtx.RelativePath,
 		repo.Language,
 		collectionName,
 		fileCtx.Content,
@@ -100,7 +102,7 @@ func (ep *EmbeddingProcessor) ProcessFile(ctx context.Context, repo *config.Repo
 	)
 	if err != nil {
 		ep.logger.Error("Failed to process file for embeddings",
-			zap.String("path", fileCtx.FilePath),
+			zap.String("path", fileCtx.RelativePath),
 			zap.Int32("file_id", fileCtx.FileID),
 			zap.Error(err))
 		return nil // Continue processing other files
@@ -113,7 +115,7 @@ func (ep *EmbeddingProcessor) ProcessFile(ctx context.Context, repo *config.Repo
 	ep.indexMethodSignatures(ctx, repo.Language, collectionName, chunks, fileCtx.FileID)
 
 	ep.logger.Debug("Successfully processed file for embeddings",
-		zap.String("path", fileCtx.FilePath),
+		zap.String("path", fileCtx.RelativePath),
 		zap.Int32("file_id", fileCtx.FileID),
 		zap.Int("chunks", len(chunks)))
 	return nil

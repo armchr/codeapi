@@ -23,10 +23,11 @@ type Buffer struct {
 }
 
 type CodeGraph struct {
-	db          GraphDatabase
-	config      *config.Config
-	logger      *zap.Logger
-	fileIDCache map[int32]string
+	db            GraphDatabase
+	config        *config.Config
+	logger        *zap.Logger
+	fileIDCache   map[int32]string
+	fileIDCacheMu sync.RWMutex // Protects fileIDCache
 	// Batch writing support - file-level buffers for parallel processing
 	enableBatchWrites bool
 	batchSize         int
@@ -465,9 +466,13 @@ func (cg *CodeGraph) ReadFileScope(ctx context.Context, nodeID ast.NodeID) (*ast
 }
 
 func (cg *CodeGraph) GetFilePath(ctx context.Context, fileID int32) string {
+	// Check cache first with read lock
+	cg.fileIDCacheMu.RLock()
 	if path, ok := cg.fileIDCache[fileID]; ok {
+		cg.fileIDCacheMu.RUnlock()
 		return path
 	}
+	cg.fileIDCacheMu.RUnlock()
 
 	fs, err := cg.ReadFileScope(ctx, ast.NodeID(fileID))
 	if err != nil {
@@ -477,7 +482,12 @@ func (cg *CodeGraph) GetFilePath(ctx context.Context, fileID int32) string {
 	if !ok {
 		return ""
 	}
+
+	// Cache with write lock
+	cg.fileIDCacheMu.Lock()
 	cg.fileIDCache[fileID] = path
+	cg.fileIDCacheMu.Unlock()
+
 	return path
 }
 
