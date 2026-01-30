@@ -127,6 +127,71 @@ type SummaryConfig struct {
 	OpenAIBaseURL string `yaml:"openai_base_url"` // For API-compatible services
 }
 
+// GitChurnConfig holds configuration for git churn analysis
+type GitChurnConfig struct {
+	// Enabled enables git churn analysis
+	Enabled bool `yaml:"enabled"`
+
+	// TimeWindowDays is the lookback period in days (default: 180)
+	TimeWindowDays int `yaml:"time_window_days"`
+
+	// EnableFileLevel enables file-level churn metrics (default: true)
+	EnableFileLevel bool `yaml:"enable_file_level"`
+
+	// EnableFunctionLevel enables function-level churn metrics (default: true)
+	EnableFunctionLevel bool `yaml:"enable_function_level"`
+
+	// Weights for churn score calculation
+	Weights ChurnWeights `yaml:"weights"`
+
+	// ExcludePatterns are glob patterns for files to exclude (e.g., "vendor/**", "**/*_test.go")
+	ExcludePatterns []string `yaml:"exclude_patterns"`
+
+	// ExcludeAuthors are author names to exclude (e.g., "dependabot[bot]")
+	ExcludeAuthors []string `yaml:"exclude_authors"`
+
+	// ExcludeMerges excludes merge commits from analysis (default: true)
+	ExcludeMerges bool `yaml:"exclude_merges"`
+
+	// MaxConcurrency is the maximum number of concurrent file processors (default: 4)
+	MaxConcurrency int `yaml:"max_concurrency"`
+
+	// FunctionChurnThreshold is the percentile threshold for function-level analysis
+	// Only files in the top N% by churn will get function-level analysis (default: 10)
+	FunctionChurnThreshold float64 `yaml:"function_churn_threshold"`
+}
+
+// ChurnWeights holds the weights for churn score calculation
+type ChurnWeights struct {
+	LinesChanged float64 `yaml:"lines_changed"` // Default: 0.5
+	CommitCount  float64 `yaml:"commit_count"`  // Default: 0.3
+	AuthorCount  float64 `yaml:"author_count"`  // Default: 0.2
+}
+
+// GetDefaults returns GitChurnConfig with default values applied
+func (c *GitChurnConfig) GetDefaults() GitChurnConfig {
+	result := *c
+	if result.TimeWindowDays == 0 {
+		result.TimeWindowDays = 180
+	}
+	if !result.EnableFileLevel && !result.EnableFunctionLevel {
+		result.EnableFileLevel = true
+		result.EnableFunctionLevel = true
+	}
+	if result.Weights.LinesChanged == 0 && result.Weights.CommitCount == 0 && result.Weights.AuthorCount == 0 {
+		result.Weights.LinesChanged = 0.5
+		result.Weights.CommitCount = 0.3
+		result.Weights.AuthorCount = 0.2
+	}
+	if result.MaxConcurrency == 0 {
+		result.MaxConcurrency = 4
+	}
+	if result.FunctionChurnThreshold == 0 {
+		result.FunctionChurnThreshold = 10.0
+	}
+	return result
+}
+
 type Config struct {
 	Source          SourceConfig          `yaml:"source"`
 	Neo4j           Neo4jConfig           `yaml:"neo4j"`
@@ -138,6 +203,7 @@ type Config struct {
 	MySQL           MySQLConfig           `yaml:"mysql"`
 	CodeGraph       CodeGraphConfig       `yaml:"code_graph"`
 	GitAnalysis     GitAnalysisConfig     `yaml:"git_analysis"`
+	GitChurn        GitChurnConfig        `yaml:"git_churn"`
 	Summary         SummaryConfig         `yaml:"summary"`
 	LanguageServers LanguageServersConfig `yaml:"language_servers"`
 	App             App                   `yaml:"app"`

@@ -1,10 +1,6 @@
 package vector
 
 import (
-	"github.com/armchr/codeapi/internal/chunk"
-	"github.com/armchr/codeapi/internal/config"
-	"github.com/armchr/codeapi/internal/model"
-	"github.com/armchr/codeapi/internal/util"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -14,6 +10,11 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+
+	"github.com/armchr/codeapi/internal/chunk"
+	"github.com/armchr/codeapi/internal/config"
+	"github.com/armchr/codeapi/internal/model"
+	"github.com/armchr/codeapi/internal/util"
 
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 	golang "github.com/tree-sitter/tree-sitter-go/bindings/go"
@@ -64,12 +65,12 @@ func (ccs *CodeChunkService) ProcessFile(ctx context.Context, filePath, language
 		return nil, nil // Return nil error to continue processing other files
 	}
 
-	return ccs.ProcessFileWithContent(ctx, filePath, language, collectionName, sourceCode)
+	return ccs.processFileWithContent(ctx, filePath, language, collectionName, sourceCode)
 }
 
 // ProcessFileWithContent processes a single source file with provided content and stores chunks in vector DB
 // Returns (chunks, error) - if error is non-nil, processing failed but can be retried
-func (ccs *CodeChunkService) ProcessFileWithContent(ctx context.Context, filePath, language, collectionName string, sourceCode []byte) ([]*model.CodeChunk, error) {
+func (ccs *CodeChunkService) processFileWithContent(ctx context.Context, filePath, language, collectionName string, sourceCode []byte) ([]*model.CodeChunk, error) {
 	// Check for existing chunks in the database
 	existingChunks, err := ccs.vectorDB.GetChunksByFilePath(ctx, collectionName, filePath)
 	if err != nil {
@@ -214,6 +215,32 @@ func (ccs *CodeChunkService) ProcessFileWithContentAndFileID(ctx context.Context
 	if existingChunks != nil {
 		for _, chunk := range existingChunks {
 			existingChunkMap[chunk.ID] = chunk
+		}
+	}
+
+	// Debug: Log sample of existing vs new chunk IDs to diagnose mismatch
+	if len(existingChunks) > 0 && len(chunks) > 0 {
+		// Log first few existing chunk IDs
+		for i, ec := range existingChunks {
+			if i >= 3 {
+				break
+			}
+			ccs.logger.Debug("Existing chunk from Qdrant",
+				zap.String("id", ec.ID),
+				zap.String("file_path", ec.FilePath),
+				zap.String("name", ec.Name),
+				zap.Int("start_line", ec.StartLine))
+		}
+		// Log first few new chunk IDs
+		for i, nc := range chunks {
+			if i >= 3 {
+				break
+			}
+			ccs.logger.Debug("New chunk from parsing",
+				zap.String("id", nc.ID),
+				zap.String("file_path", nc.FilePath),
+				zap.String("name", nc.Name),
+				zap.Int("start_line", nc.StartLine))
 		}
 	}
 

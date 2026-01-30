@@ -2218,7 +2218,7 @@ func (cg *CodeGraph) CleanRepository(ctx context.Context, repoName string) error
 			zap.Int64("descendants", descCount))
 	}
 
-	// Delete all descendant nodes first (nodes connected via CONTAINS relationships)
+	// Phase 1: Delete all descendant nodes (nodes connected via CONTAINS relationships)
 	// Using DETACH DELETE to also remove all relationships
 	deleteDescendantsQuery := `
 		MATCH (fs:FileScope {repo: $repo})-[:CONTAINS*]->(descendant)
@@ -2228,9 +2228,24 @@ func (cg *CodeGraph) CleanRepository(ctx context.Context, repoName string) error
 	if err != nil {
 		return fmt.Errorf("failed to delete descendant nodes: %w", err)
 	}
-	cg.logger.Debug("Deleted descendant nodes", zap.String("repo", repoName))
+	cg.logger.Debug("Phase 1: Deleted descendant nodes via CONTAINS", zap.String("repo", repoName))
 
-	// Now delete the FileScope nodes themselves
+	// Phase 1.5: Delete any orphaned nodes that have the same fileId as FileScopes in this repo
+	// This catches nodes that may not be connected via CONTAINS but still belong to repo files
+	deleteByFileIdQuery := `
+		MATCH (fs:FileScope {repo: $repo})
+		WITH collect(fs.id) AS fileIds
+		MATCH (n)
+		WHERE n.fileId IN fileIds AND NOT n:FileScope
+		DETACH DELETE n
+	`
+	_, err = cg.db.ExecuteWrite(ctx, deleteByFileIdQuery, map[string]any{"repo": repoName})
+	if err != nil {
+		return fmt.Errorf("failed to delete nodes by fileId: %w", err)
+	}
+	cg.logger.Debug("Phase 1.5: Deleted orphaned nodes by fileId", zap.String("repo", repoName))
+
+	// Phase 2: Delete the FileScope nodes themselves
 	deleteFileScopesQuery := `
 		MATCH (fs:FileScope {repo: $repo})
 		DETACH DELETE fs
@@ -2239,7 +2254,7 @@ func (cg *CodeGraph) CleanRepository(ctx context.Context, repoName string) error
 	if err != nil {
 		return fmt.Errorf("failed to delete FileScope nodes: %w", err)
 	}
-	cg.logger.Debug("Deleted FileScope nodes", zap.String("repo", repoName))
+	cg.logger.Debug("Phase 2: Deleted FileScope nodes", zap.String("repo", repoName))
 
 	cg.logger.Info("Neo4j cleanup completed for repository", zap.String("repo", repoName))
 	return nil
@@ -2330,4 +2345,20 @@ func (cg *CodeGraph) FindFileByPath(ctx context.Context, repoName string, filePa
 // GetClassMethods returns all method nodes for a class
 func (cg *CodeGraph) GetClassMethods(ctx context.Context, classID ast.NodeID) ([]*ast.Node, error) {
 	return cg.GetMethodsOfClass(ctx, classID)
+}
+
+// -----------------------------------------------------------------------------
+// Git Churn Support Methods
+// -----------------------------------------------------------------------------
+
+// FindFunctionsByFilePath returns all Function nodes in a file identified by repo name and file path
+func (cg *CodeGraph) FindFunctionsByFilePath(ctx context.Context, repoName string, filePath string) ([]*ast.Node, error) {
+	query := `
+		MATCH (file:FileScope {repo: $repo, path: $path})-[:CONTAINS*]->(fn:Function)
+		RETURN fn
+	`
+	return cg.readNodesByQuery(ctx, "fn", query, map[string]any{
+		"repo": repoName,
+		"path": filePath,
+	})
 }

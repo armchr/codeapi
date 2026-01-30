@@ -163,6 +163,20 @@ func (sc *ServiceContainer) InitProcessors(cfg *config.Config) error {
 		sc.logger.Info("Summary processor added to pipeline")
 	}
 
+	// Add Git Churn processor if enabled and CodeGraph is available
+	if cfg.GitChurn.Enabled && sc.CodeGraph != nil {
+		gitChurnProcessor := controller.NewGitChurnProcessor(
+			sc.CodeGraph,
+			&cfg.GitChurn,
+			sc.logger,
+		)
+		processors = append(processors, gitChurnProcessor)
+		sc.logger.Info("Git Churn processor added to pipeline",
+			zap.Int("timeWindowDays", cfg.GitChurn.TimeWindowDays),
+			zap.Bool("fileLevel", cfg.GitChurn.EnableFileLevel),
+			zap.Bool("functionLevel", cfg.GitChurn.EnableFunctionLevel))
+	}
+
 	sc.Processors = processors
 	return nil
 }

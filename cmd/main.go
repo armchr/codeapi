@@ -59,7 +59,9 @@ func main() {
 	flag.Var(&buildIndex, "build-index", "Repository name to build index for (can be specified multiple times)")
 	var useHead = flag.Bool("head", false, "Use git HEAD version instead of working directory (only valid with --build-index)")
 	var testDump = flag.String("test-dump", "", "Path to output file for dumping code graph after index building (only valid with --build-index)")
-	var clean = flag.Bool("clean", false, "Clean up all DB entries (MySQL, Neo4j, Qdrant) for the repository after processing (only valid with --build-index)")
+	var clean = flag.Bool("clean", false, "Clean up all DB entries (MySQL, Neo4j, Qdrant) for the repository (can be used standalone or with --build-index)")
+	var cleanRepos stringSliceFlag
+	flag.Var(&cleanRepos, "clean-repo", "Repository name to clean (can be specified multiple times, use with --clean for standalone cleanup)")
 	flag.Parse()
 
 	cfg, err := config.LoadConfig(*appConfigPath, *sourceConfigPath)
@@ -90,6 +92,13 @@ func main() {
 		return
 	}
 
+	// Check if we're in standalone clean mode (--clean with --clean-repo but no --build-index)
+	if *clean && len(cleanRepos) > 0 && len(buildIndex) == 0 {
+		logger.Info("Running in CLI mode - standalone clean")
+		CleanCommand(cfg, logger, cleanRepos)
+		return
+	}
+
 	// Check if we're in CLI mode (build-index specified)
 	if len(buildIndex) > 0 {
 		logger.Info("Running in CLI mode - build-index")
@@ -102,9 +111,14 @@ func main() {
 		logger.Fatal("--test-dump flag is only valid with --build-index")
 	}
 
-	// Validate --clean flag usage
+	// Validate --clean flag usage (needs either --build-index or --clean-repo)
 	if *clean {
-		logger.Fatal("--clean flag is only valid with --build-index")
+		logger.Fatal("--clean flag requires either --build-index or --clean-repo")
+	}
+
+	// Validate --clean-repo flag usage
+	if len(cleanRepos) > 0 {
+		logger.Fatal("--clean-repo flag requires --clean flag")
 	}
 
 	// Validate --head flag usage
@@ -308,7 +322,7 @@ func BuildIndexCommand(cfg *config.Config, logger *zap.Logger, repoNames []strin
 
 			// Clean MySQL (FileVersionRepository)
 			if container.MySQLConn != nil {
-				logger.Info("Cleaning MySQL table", zap.String("repo_name", repoName))
+				logger.Info("Cleaning MySQL file_versions table", zap.String("repo_name", repoName))
 				fileVersionRepo, err := db.NewFileVersionRepository(container.MySQLConn.GetDB(), repoName, logger)
 				if err != nil {
 					logger.Error("Failed to create file version repository for cleanup",
@@ -316,11 +330,28 @@ func BuildIndexCommand(cfg *config.Config, logger *zap.Logger, repoNames []strin
 						zap.Error(err))
 				} else {
 					if err := fileVersionRepo.DropTable(); err != nil {
-						logger.Error("Failed to drop MySQL table",
+						logger.Error("Failed to drop MySQL file_versions table",
 							zap.String("repo_name", repoName),
 							zap.Error(err))
 					} else {
-						logger.Info("MySQL table dropped successfully", zap.String("repo_name", repoName))
+						logger.Info("MySQL file_versions table dropped successfully", zap.String("repo_name", repoName))
+					}
+				}
+
+				// Clean MySQL (SummaryStore)
+				logger.Info("Cleaning MySQL code_summaries table", zap.String("repo_name", repoName))
+				summaryStore, err := db.NewSummaryStore(container.MySQLConn.GetDB(), repoName, logger)
+				if err != nil {
+					logger.Error("Failed to create summary store for cleanup",
+						zap.String("repo_name", repoName),
+						zap.Error(err))
+				} else {
+					if err := summaryStore.DropTable(); err != nil {
+						logger.Error("Failed to drop MySQL code_summaries table",
+							zap.String("repo_name", repoName),
+							zap.Error(err))
+					} else {
+						logger.Info("MySQL code_summaries table dropped successfully", zap.String("repo_name", repoName))
 					}
 				}
 			}
@@ -331,6 +362,97 @@ func BuildIndexCommand(cfg *config.Config, logger *zap.Logger, repoNames []strin
 	}
 
 	logger.Info("Build index command completed")
+}
+
+// CleanCommand performs standalone cleanup of repository data from all databases
+func CleanCommand(cfg *config.Config, logger *zap.Logger, repoNames []string) {
+	ctx := context.Background()
+
+	logger.Info("Clean command started",
+		zap.Strings("repositories", repoNames))
+
+	// Initialize services needed for cleanup
+	opts := init_services.ServiceInitOptions{
+		EnableMySQL:      cfg.MySQL.Host != "",
+		EnableCodeGraph:  cfg.Neo4j.URI != "",
+		EnableEmbeddings: cfg.Qdrant.Host != "",
+	}
+	container, err := init_services.NewServiceContainer(cfg, opts, logger)
+	if err != nil {
+		logger.Fatal("Failed to initialize services for cleanup", zap.Error(err))
+		return
+	}
+	defer container.Close(ctx)
+
+	// Clean each repository
+	for _, repoName := range repoNames {
+		logger.Info("Cleaning up repository data", zap.String("repo_name", repoName))
+
+		// Clean Neo4j (CodeGraph)
+		if container.CodeGraph != nil {
+			logger.Info("Cleaning Neo4j data", zap.String("repo_name", repoName))
+			if err := container.CodeGraph.CleanRepository(ctx, repoName); err != nil {
+				logger.Error("Failed to clean Neo4j data",
+					zap.String("repo_name", repoName),
+					zap.Error(err))
+			} else {
+				logger.Info("Neo4j data cleaned successfully", zap.String("repo_name", repoName))
+			}
+		}
+
+		// Clean Qdrant (Vector DB)
+		if container.VectorDB != nil {
+			logger.Info("Cleaning Qdrant collection", zap.String("repo_name", repoName))
+			if err := container.VectorDB.DeleteCollection(ctx, repoName); err != nil {
+				logger.Error("Failed to clean Qdrant collection",
+					zap.String("repo_name", repoName),
+					zap.Error(err))
+			} else {
+				logger.Info("Qdrant collection cleaned successfully", zap.String("repo_name", repoName))
+			}
+		}
+
+		// Clean MySQL tables
+		if container.MySQLConn != nil {
+			// Clean file_versions table
+			logger.Info("Cleaning MySQL file_versions table", zap.String("repo_name", repoName))
+			fileVersionRepo, err := db.NewFileVersionRepository(container.MySQLConn.GetDB(), repoName, logger)
+			if err != nil {
+				logger.Error("Failed to create file version repository for cleanup",
+					zap.String("repo_name", repoName),
+					zap.Error(err))
+			} else {
+				if err := fileVersionRepo.DropTable(); err != nil {
+					logger.Error("Failed to drop MySQL file_versions table",
+						zap.String("repo_name", repoName),
+						zap.Error(err))
+				} else {
+					logger.Info("MySQL file_versions table dropped successfully", zap.String("repo_name", repoName))
+				}
+			}
+
+			// Clean code_summaries table
+			logger.Info("Cleaning MySQL code_summaries table", zap.String("repo_name", repoName))
+			summaryStore, err := db.NewSummaryStore(container.MySQLConn.GetDB(), repoName, logger)
+			if err != nil {
+				logger.Error("Failed to create summary store for cleanup",
+					zap.String("repo_name", repoName),
+					zap.Error(err))
+			} else {
+				if err := summaryStore.DropTable(); err != nil {
+					logger.Error("Failed to drop MySQL code_summaries table",
+						zap.String("repo_name", repoName),
+						zap.Error(err))
+				} else {
+					logger.Info("MySQL code_summaries table dropped successfully", zap.String("repo_name", repoName))
+				}
+			}
+		}
+
+		logger.Info("Cleanup completed for repository", zap.String("repo_name", repoName))
+	}
+
+	logger.Info("Clean command completed")
 }
 
 func CodeGraphEntry(cfg *config.Config, logger *zap.Logger, container *init_services.ServiceContainer) {

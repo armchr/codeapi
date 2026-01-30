@@ -1,10 +1,11 @@
 package vector
 
 import (
-	"github.com/armchr/codeapi/internal/model"
-	"github.com/armchr/codeapi/pkg/lsp/base"
 	"context"
 	"fmt"
+
+	"github.com/armchr/codeapi/internal/model"
+	"github.com/armchr/codeapi/pkg/lsp/base"
 
 	"github.com/google/uuid"
 	"github.com/qdrant/go-client/qdrant"
@@ -248,6 +249,7 @@ func (q *QdrantDatabase) DeleteChunk(ctx context.Context, collectionName string,
 
 // GetChunksByFilePath retrieves all chunks for a specific file path
 func (q *QdrantDatabase) GetChunksByFilePath(ctx context.Context, collectionName string, filePath string) ([]*model.CodeChunk, error) {
+	q.logger.Info("GetChunksByFilePath ", zap.String("filePath", filePath), zap.String("collectionName", collectionName))
 	// Build filter for file_path
 	filter := &qdrant.Filter{
 		Must: []*qdrant.Condition{
@@ -283,6 +285,9 @@ func (q *QdrantDatabase) GetChunksByFilePath(ctx context.Context, collectionName
 			chunks = append(chunks, chunk)
 		}
 	}
+
+	q.logger.Info("GetChunksByFilePath ", zap.String("filePath", filePath), zap.String("collectionName", collectionName),
+		zap.Int("chunks_found", len(chunks)))
 
 	return chunks, nil
 }
