@@ -266,13 +266,13 @@ func (q *QdrantDatabase) GetChunksByFilePath(ctx context.Context, collectionName
 
 	// Scroll through all points matching the filter
 	// Using a large limit to get all chunks for a file (unlikely to have >10000 chunks in one file)
-	// Note: We DO need vectors here because we reuse embeddings from existing chunks
+	// Note: We only need IDs to check existence, not vectors (skip embedding = faster)
 	scrollResult, err := q.client.Scroll(ctx, &qdrant.ScrollPoints{
 		CollectionName: collectionName,
 		Filter:         filter,
 		Limit:          qdrant.PtrOf(uint32(10000)),
 		WithPayload:    qdrant.NewWithPayload(true),
-		WithVectors:    qdrant.NewWithVectors(true), // Required: we reuse these embeddings
+		WithVectors:    qdrant.NewWithVectors(false), // Don't fetch vectors - only checking existence
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to scroll points: %w", err)

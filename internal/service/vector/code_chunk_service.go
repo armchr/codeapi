@@ -105,24 +105,14 @@ func (ccs *CodeChunkService) processFileWithContent(ctx context.Context, filePat
 	}
 
 	// Separate new chunks from existing chunks
+	// Only check if chunk ID exists - don't check embedding (skip vector fetch)
 	var newChunks []*model.CodeChunk
-	var existingMatchedChunks []*model.CodeChunk
+	existingCount := 0
 
 	for _, chunk := range chunks {
-		if existingChunk, exists := existingChunkMap[chunk.ID]; exists {
-			// Chunk already exists - check if it has a valid embedding
-			if len(existingChunk.Embedding) == 0 {
-				// Existing chunk has no embedding (from previous failed run) - regenerate
-				ccs.logger.Debug("Existing chunk has empty embedding, will regenerate",
-					zap.String("id", chunk.ID),
-					zap.String("file", chunk.FilePath),
-					zap.String("type", string(chunk.ChunkType)))
-				newChunks = append(newChunks, chunk)
-			} else {
-				// Reuse valid embedding
-				chunk.Embedding = existingChunk.Embedding
-				existingMatchedChunks = append(existingMatchedChunks, chunk)
-			}
+		if _, exists := existingChunkMap[chunk.ID]; exists {
+			// Chunk already exists in Qdrant - skip it
+			existingCount++
 		} else {
 			// New chunk, needs embedding
 			newChunks = append(newChunks, chunk)
@@ -132,7 +122,7 @@ func (ccs *CodeChunkService) processFileWithContent(ctx context.Context, filePat
 	ccs.logger.Info("Chunk analysis for file",
 		zap.String("file", filePath),
 		zap.Int("total_chunks", len(chunks)),
-		zap.Int("existing_chunks", len(existingMatchedChunks)),
+		zap.Int("existing_chunks", existingCount),
 		zap.Int("new_chunks", len(newChunks)))
 
 	// Generate embeddings only for new chunks
@@ -146,13 +136,10 @@ func (ccs *CodeChunkService) processFileWithContent(ctx context.Context, filePat
 				zap.Error(err))
 			return nil, nil // Return nil error to continue processing other files
 		}
-		chunksToStore = append(chunksToStore, newChunksWithEmbeddings...)
+		chunksToStore = newChunksWithEmbeddings
 	}
 
-	// Add existing chunks with their embeddings
-	chunksToStore = append(chunksToStore, existingMatchedChunks...)
-
-	// Store all chunks in vector database (upsert will update existing ones)
+	// Store only new chunks in vector database
 	if len(chunksToStore) > 0 {
 		if err := ccs.vectorDB.UpsertChunks(ctx, collectionName, chunksToStore); err != nil {
 			// Vector DB errors might be transient - log and skip
@@ -245,24 +232,14 @@ func (ccs *CodeChunkService) ProcessFileWithContentAndFileID(ctx context.Context
 	}
 
 	// Separate new chunks from existing chunks
+	// Only check if chunk ID exists - don't check embedding (skip vector fetch)
 	var newChunks []*model.CodeChunk
-	var existingMatchedChunks []*model.CodeChunk
+	existingCount := 0
 
 	for _, chunk := range chunks {
-		if existingChunk, exists := existingChunkMap[chunk.ID]; exists {
-			// Chunk already exists - check if it has a valid embedding
-			if len(existingChunk.Embedding) == 0 {
-				// Existing chunk has no embedding (from previous failed run) - regenerate
-				ccs.logger.Debug("Existing chunk has empty embedding, will regenerate",
-					zap.String("id", chunk.ID),
-					zap.String("file", chunk.FilePath),
-					zap.String("type", string(chunk.ChunkType)))
-				newChunks = append(newChunks, chunk)
-			} else {
-				// Reuse valid embedding
-				chunk.Embedding = existingChunk.Embedding
-				existingMatchedChunks = append(existingMatchedChunks, chunk)
-			}
+		if _, exists := existingChunkMap[chunk.ID]; exists {
+			// Chunk already exists in Qdrant - skip it
+			existingCount++
 		} else {
 			// New chunk, needs embedding
 			newChunks = append(newChunks, chunk)
@@ -273,7 +250,7 @@ func (ccs *CodeChunkService) ProcessFileWithContentAndFileID(ctx context.Context
 		zap.String("file", filePath),
 		zap.Int32("file_id", fileID),
 		zap.Int("total_chunks", len(chunks)),
-		zap.Int("existing_chunks", len(existingMatchedChunks)),
+		zap.Int("existing_chunks", existingCount),
 		zap.Int("new_chunks", len(newChunks)))
 
 	// Generate embeddings only for new chunks
@@ -288,13 +265,10 @@ func (ccs *CodeChunkService) ProcessFileWithContentAndFileID(ctx context.Context
 				zap.Error(err))
 			return nil, nil // Return nil error to continue processing other files
 		}
-		chunksToStore = append(chunksToStore, newChunksWithEmbeddings...)
+		chunksToStore = newChunksWithEmbeddings
 	}
 
-	// Add existing chunks with their embeddings
-	chunksToStore = append(chunksToStore, existingMatchedChunks...)
-
-	// Store all chunks in vector database (upsert will update existing ones)
+	// Store only new chunks in vector database
 	if len(chunksToStore) > 0 {
 		if err := ccs.vectorDB.UpsertChunks(ctx, collectionName, chunksToStore); err != nil {
 			// Vector DB errors might be transient - log and skip
