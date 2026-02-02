@@ -169,11 +169,11 @@ type ChurnWeights struct {
 }
 
 // GetDefaults returns GitChurnConfig with default values applied
+// Note: TimeWindowDays = 0 means "all history" (no time limit)
 func (c *GitChurnConfig) GetDefaults() GitChurnConfig {
 	result := *c
-	if result.TimeWindowDays == 0 {
-		result.TimeWindowDays = 180
-	}
+	// Don't set default for TimeWindowDays - 0 means "all history"
+	// Users should set it in app.yaml if they want a time window
 	if !result.EnableFileLevel && !result.EnableFunctionLevel {
 		result.EnableFileLevel = true
 		result.EnableFunctionLevel = true

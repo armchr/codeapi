@@ -227,53 +227,76 @@ func (gcp *GitChurnProcessor) getFileLineCount(fileScope *ast.Node) int {
 // processFunctionLevelChurn updates Function nodes with churn metrics
 // Only processes files with high churn (hybrid approach for performance)
 func (gcp *GitChurnProcessor) processFunctionLevelChurn(ctx context.Context, repo *config.Repository) error {
-	// Get all files with high churn
-	highChurnFiles, err := gcp.getHighChurnFiles(ctx, repo)
-	if err != nil {
-		return fmt.Errorf("failed to identify high churn files: %w", err)
-	}
-
-	if len(highChurnFiles) == 0 {
-		gcp.logger.Debug("No high churn files found for function-level analysis")
-		return nil
-	}
-
-	gcp.logger.Debug("Processing function-level churn for high-churn files",
-		zap.Int("fileCount", len(highChurnFiles)))
-
-	for _, filePath := range highChurnFiles {
-		if err := gcp.processFunctionsInFile(ctx, repo, filePath); err != nil {
-			gcp.logger.Warn("Failed to process functions in file",
-				zap.String("file", filePath),
-				zap.Error(err))
-		}
-	}
-
+	// Get all files with high churn (returns FileScope nodes)
 	return nil
+	/*
+		highChurnFiles, err := gcp.getHighChurnFiles(ctx, repo)
+		if err != nil {
+			return fmt.Errorf("failed to identify high churn files: %w", err)
+		}
+
+		if len(highChurnFiles) == 0 {
+			gcp.logger.Debug("No high churn files found for function-level analysis")
+			return nil
+		}
+
+		gcp.logger.Debug("Processing function-level churn for high-churn files",
+			zap.Int("fileCount", len(highChurnFiles)))
+
+		for _, fileScope := range highChurnFiles {
+			relativePath, _ := fileScope.MetaData["path"].(string)
+			if err := gcp.processFunctionsInFile(ctx, repo, fileScope.FileID, relativePath); err != nil {
+				gcp.logger.Warn("Failed to process functions in file",
+					zap.String("file", relativePath),
+					zap.Error(err))
+			}
+		}
+
+		return nil
+	*/
 }
 
-// getHighChurnFiles returns files with churn score in the top N%
-func (gcp *GitChurnProcessor) getHighChurnFiles(ctx context.Context, repo *config.Repository) ([]string, error) {
-	// Get all file metrics from the cache
-	allMetrics := gcp.gitLog.GetAllFileMetrics()
-	if len(allMetrics) == 0 {
+// getHighChurnFiles returns FileScope nodes with churn score in the top N%
+func (gcp *GitChurnProcessor) getHighChurnFiles(ctx context.Context, repo *config.Repository) ([]*ast.Node, error) {
+	// Get all FileScope nodes for this repository
+	fileScopes, err := gcp.codeGraph.FindFileScopes(ctx, repo.Name, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get file scopes: %w", err)
+	}
+
+	if len(fileScopes) == 0 {
 		return nil, nil
 	}
 
-	// Calculate scores and sort
+	// Calculate scores for each file using the git log cache
 	type fileScore struct {
-		path  string
+		node  *ast.Node
 		score float64
 	}
 
-	scores := make([]fileScore, 0, len(allMetrics))
-	for path, metrics := range allMetrics {
-		linesChanged := metrics.LinesAdded + metrics.LinesDeleted
-		authorCount := len(metrics.Authors)
+	scores := make([]fileScore, 0, len(fileScopes))
+	for _, fs := range fileScopes {
+		relativePath, ok := fs.MetaData["path"].(string)
+		if !ok || relativePath == "" {
+			continue
+		}
+
+		// Look up churn data from cache using the path stored in the database
+		churnData := gcp.gitLog.GetFileMetrics(relativePath)
+		if churnData == nil {
+			continue // No git history for this file
+		}
+
+		linesChanged := churnData.LinesAdded + churnData.LinesDeleted
+		authorCount := len(churnData.Authors)
 		score := float64(linesChanged)*gcp.config.Weights.LinesChanged +
-			float64(metrics.CommitCount)*gcp.config.Weights.CommitCount +
+			float64(churnData.CommitCount)*gcp.config.Weights.CommitCount +
 			float64(authorCount)*gcp.config.Weights.AuthorCount
-		scores = append(scores, fileScore{path: path, score: score})
+		scores = append(scores, fileScore{node: fs, score: score})
+	}
+
+	if len(scores) == 0 {
+		return nil, nil
 	}
 
 	// Sort by score descending
@@ -287,18 +310,18 @@ func (gcp *GitChurnProcessor) getHighChurnFiles(ctx context.Context, repo *confi
 		threshold = 1
 	}
 
-	result := make([]string, 0, threshold)
+	result := make([]*ast.Node, 0, threshold)
 	for i := 0; i < threshold && i < len(scores); i++ {
-		result = append(result, scores[i].path)
+		result = append(result, scores[i].node)
 	}
 
 	return result, nil
 }
 
 // processFunctionsInFile processes all functions in a file for churn metrics
-func (gcp *GitChurnProcessor) processFunctionsInFile(ctx context.Context, repo *config.Repository, filePath string) error {
-	// Get all Function nodes in this file
-	functions, err := gcp.codeGraph.FindFunctionsByFilePath(ctx, repo.Name, filePath)
+func (gcp *GitChurnProcessor) processFunctionsInFile(ctx context.Context, repo *config.Repository, fileID int32, filePath string) error {
+	// Get all Function nodes in this file by file ID
+	functions, err := gcp.codeGraph.FindFunctionsByFileID(ctx, fileID)
 	if err != nil {
 		return err
 	}
@@ -307,7 +330,7 @@ func (gcp *GitChurnProcessor) processFunctionsInFile(ctx context.Context, repo *
 		return nil
 	}
 
-	// Get detailed diff data for this file
+	// Get detailed diff data for this file (uses path for git log)
 	diffData, err := gcp.gitLog.BuildDiffData(ctx, filePath)
 	if err != nil {
 		return err

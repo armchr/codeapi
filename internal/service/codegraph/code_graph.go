@@ -2362,3 +2362,14 @@ func (cg *CodeGraph) FindFunctionsByFilePath(ctx context.Context, repoName strin
 		"path": filePath,
 	})
 }
+
+// FindFunctionsByFileID returns all Function nodes in a file identified by file ID
+func (cg *CodeGraph) FindFunctionsByFileID(ctx context.Context, fileID int32) ([]*ast.Node, error) {
+	query := `
+		MATCH (fn:Function {fileId: $fileId})
+		RETURN fn
+	`
+	return cg.readNodesByQuery(ctx, "fn", query, map[string]any{
+		"fileId": fileID,
+	})
+}

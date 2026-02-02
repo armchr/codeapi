@@ -75,20 +75,24 @@ func NewGitLogCache(repoPath string, config *config.GitChurnConfig, logger *zap.
 
 // Build parses the git log and populates the cache
 func (glc *GitLogCache) Build(ctx context.Context) error {
-	// Calculate time window
-	since := time.Now().AddDate(0, 0, -glc.config.TimeWindowDays)
-
-	glc.logger.Debug("Building git log cache",
-		zap.String("repoPath", glc.repoPath),
-		zap.Time("since", since),
-		zap.Int("timeWindowDays", glc.config.TimeWindowDays))
-
 	// Build git log command
 	args := []string{
 		"log",
-		"--since=" + since.Format("2006-01-02"),
 		"--numstat",
 		"--format=%H|%an|%aI|%P", // SHA|Author|Date|Parents
+	}
+
+	// Add time window filter if specified (0 means all history)
+	if glc.config.TimeWindowDays > 0 {
+		since := time.Now().AddDate(0, 0, -glc.config.TimeWindowDays)
+		args = append(args, "--since="+since.Format("2006-01-02"))
+		glc.logger.Debug("Building git log cache with time window",
+			zap.String("repoPath", glc.repoPath),
+			zap.Time("since", since),
+			zap.Int("timeWindowDays", glc.config.TimeWindowDays))
+	} else {
+		glc.logger.Debug("Building git log cache for all history",
+			zap.String("repoPath", glc.repoPath))
 	}
 
 	if glc.config.ExcludeMerges {
@@ -359,21 +363,25 @@ func (glc *GitLogCache) GetCommits() []CommitData {
 // BuildDiffData builds detailed diff data for function-level attribution
 // This runs git log with -p for detailed diffs on specific files
 func (glc *GitLogCache) BuildDiffData(ctx context.Context, filePath string) (*FileDiffData, error) {
-	since := time.Now().AddDate(0, 0, -glc.config.TimeWindowDays)
-
 	args := []string{
 		"log",
-		"--since=" + since.Format("2006-01-02"),
 		"-p",                    // Show patch (diff)
 		"--format=%H|%an|%aI",   // SHA|Author|Date
 		"--follow",              // Follow renames
-		"--",
-		filePath,
+	}
+
+	// Add time window filter if specified (0 means all history)
+	if glc.config.TimeWindowDays > 0 {
+		since := time.Now().AddDate(0, 0, -glc.config.TimeWindowDays)
+		args = append(args, "--since="+since.Format("2006-01-02"))
 	}
 
 	if glc.config.ExcludeMerges {
 		args = append(args, "--no-merges")
 	}
+
+	// Add file path after "--" separator (must be last)
+	args = append(args, "--", filePath)
 
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = glc.repoPath
