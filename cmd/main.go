@@ -146,7 +146,7 @@ func main() {
 	var codeAPIController *controller.CodeAPIController
 	if container.CodeGraph != nil {
 		codeAPI := codeapi.NewCodeAPI(container.CodeGraph, logger)
-		codeAPIController = controller.NewCodeAPIController(codeAPI, logger)
+		codeAPIController = controller.NewCodeAPIController(codeAPI, cfg, logger)
 	}
 
 	// Initialize Summary controller if MySQL is available

@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-02-02
+
 ### Added
+
+- **Code snippet endpoint** (`POST /codeapi/v1/snippet`)
+  - Fetch code snippets from repository files by specifying line ranges
+  - Request parameters: `repo_name`, `file_path`, `start_line`, `end_line`
+  - Returns the code content with actual line count
+  - Security: Path traversal prevention using symlink resolution and repository bounds validation
 
 - **Unit test suite** for core functionality
   - LSP utilities (`pkg/lsp/base/lsp_util_test.go`) - 7 tests for symbol matching, range comparison, Java method name extraction
@@ -165,5 +173,6 @@ This is the initial release. No migration required.
 
 ---
 
+[1.1.0]: https://github.com/armchr/codeapi/releases/tag/v1.1.0
 [1.0.0]: https://github.com/armchr/codeapi/releases/tag/v1.0.0
 [0.1.0]: https://github.com/armchr/codeapi/releases/tag/v0.1.0

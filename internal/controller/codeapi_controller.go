@@ -1,12 +1,17 @@
 package controller
 
 import (
+	"bufio"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/armchr/codeapi/internal/codeapi"
+	"github.com/armchr/codeapi/internal/config"
 	"github.com/armchr/codeapi/internal/model/ast"
 
 	"github.com/gin-gonic/gin"
@@ -58,13 +63,15 @@ func (f *FlexibleFunctionID) UnmarshalJSON(data []byte) error {
 // CodeAPIController handles HTTP requests for the CodeAPI
 type CodeAPIController struct {
 	api    codeapi.CodeAPI
+	cfg    *config.Config
 	logger *zap.Logger
 }
 
 // NewCodeAPIController creates a new CodeAPIController
-func NewCodeAPIController(api codeapi.CodeAPI, logger *zap.Logger) *CodeAPIController {
+func NewCodeAPIController(api codeapi.CodeAPI, cfg *config.Config, logger *zap.Logger) *CodeAPIController {
 	return &CodeAPIController{
 		api:    api,
+		cfg:    cfg,
 		logger: logger,
 	}
 }
@@ -179,6 +186,24 @@ type GetImpactRequest struct {
 type ExecuteCypherRequest struct {
 	Query  string         `json:"query" binding:"required"`
 	Params map[string]any `json:"params"`
+}
+
+// GetCodeSnippetRequest is the request for getting a code snippet
+type GetCodeSnippetRequest struct {
+	RepoName  string `json:"repo_name" binding:"required"`
+	FilePath  string `json:"file_path" binding:"required"`
+	StartLine int    `json:"start_line" binding:"required,min=1"`
+	EndLine   int    `json:"end_line" binding:"required,min=1"`
+}
+
+// GetCodeSnippetResponse is the response for getting a code snippet
+type GetCodeSnippetResponse struct {
+	RepoName   string `json:"repo_name"`
+	FilePath   string `json:"file_path"`
+	StartLine  int    `json:"start_line"`
+	EndLine    int    `json:"end_line"`
+	Code       string `json:"code"`
+	TotalLines int    `json:"total_lines"`
 }
 
 // -----------------------------------------------------------------------------
@@ -756,4 +781,121 @@ func (c *CodeAPIController) ExecuteCypherWrite(ctx *gin.Context) {
 		return
 	}
 	ctx.JSON(http.StatusOK, gin.H{"results": results})
+}
+
+// -----------------------------------------------------------------------------
+// Code Snippet Endpoint
+// -----------------------------------------------------------------------------
+
+// GetCodeSnippet returns a code snippet from a file in a repository
+func (c *CodeAPIController) GetCodeSnippet(ctx *gin.Context) {
+	var req GetCodeSnippetRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Validate line range
+	if req.StartLine > req.EndLine {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "start_line must be less than or equal to end_line"})
+		return
+	}
+
+	// Get repository configuration
+	repo, err := c.cfg.GetRepository(req.RepoName)
+	if err != nil {
+		ctx.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("repository not found: %s", req.RepoName)})
+		return
+	}
+
+	// Resolve and validate the file path
+	fullPath := filepath.Join(repo.Path, req.FilePath)
+
+	// Security: Validate the resolved path stays within the repository
+	absRepoPath, err := filepath.Abs(repo.Path)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to resolve repository path"})
+		return
+	}
+
+	absFilePath, err := filepath.Abs(fullPath)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid file path"})
+		return
+	}
+
+	// Evaluate symlinks to prevent symlink-based traversal attacks
+	realRepoPath, err := filepath.EvalSymlinks(absRepoPath)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to resolve repository path"})
+		return
+	}
+
+	realFilePath, err := filepath.EvalSymlinks(absFilePath)
+	if err != nil {
+		// File might not exist - check if it's a path traversal attempt
+		if !strings.HasPrefix(absFilePath, absRepoPath+string(filepath.Separator)) {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "file path must be within repository"})
+			return
+		}
+		ctx.JSON(http.StatusNotFound, gin.H{"error": "file not found"})
+		return
+	}
+
+	// Verify the real path is within the repository
+	if !strings.HasPrefix(realFilePath, realRepoPath+string(filepath.Separator)) {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "file path must be within repository"})
+		return
+	}
+
+	// Read the specified lines from the file
+	code, totalLines, err := readFileLines(realFilePath, req.StartLine, req.EndLine)
+	if err != nil {
+		if os.IsNotExist(err) {
+			ctx.JSON(http.StatusNotFound, gin.H{"error": "file not found"})
+			return
+		}
+		c.logger.Error("Failed to read file", zap.Error(err), zap.String("path", realFilePath))
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read file"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, GetCodeSnippetResponse{
+		RepoName:   req.RepoName,
+		FilePath:   req.FilePath,
+		StartLine:  req.StartLine,
+		EndLine:    req.EndLine,
+		Code:       code,
+		TotalLines: totalLines,
+	})
+}
+
+// readFileLines reads lines from startLine to endLine (1-indexed, inclusive)
+// Returns the content, actual number of lines read, and any error
+func readFileLines(filePath string, startLine, endLine int) (string, int, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", 0, err
+	}
+	defer file.Close()
+
+	var lines []string
+	scanner := bufio.NewScanner(file)
+	lineNum := 0
+
+	for scanner.Scan() {
+		lineNum++
+		if lineNum >= startLine && lineNum <= endLine {
+			lines = append(lines, scanner.Text())
+		}
+		if lineNum > endLine {
+			break
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return "", 0, err
+	}
+
+	return strings.Join(lines, "\n"), len(lines), nil
 }

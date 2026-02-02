@@ -85,6 +85,9 @@ func SetupRouter(repoController *controller.RepoController, codeAPIController *c
 			codeAPI.POST("/cypher", codeAPIController.ExecuteCypher)
 			codeAPI.POST("/cypher/write", codeAPIController.ExecuteCypherWrite)
 
+			// Code snippet endpoint
+			codeAPI.POST("/snippet", codeAPIController.GetCodeSnippet)
+
 			// Health check
 			codeAPI.GET("/health", func(c *gin.Context) {
 				c.JSON(200, gin.H{"status": "healthy"})

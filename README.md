@@ -279,14 +279,33 @@ make build-index REPO="repo1 repo2 repo3"
 
 ### Code Graph Model
 
-**Node Types:**
-- `FileScope` - Source file
-- `Class` - Class, struct, or interface
-- `Function` - Function or method
-- `Field` - Class field or property
-- `Variable` - Local variable
-- `Block` - Code block (conditional, loop)
-- `Import` - Import statement
+**Node Types (Neo4j Labels):**
+
+| Label | Description |
+|-------|-------------|
+| `ModuleScope` | Module or package scope |
+| `FileScope` | Source file |
+| `Class` | Class, struct, or interface |
+| `Function` | Function or method |
+| `Field` | Class field or property |
+| `Variable` | Local variable |
+| `Conditional` | If statements, switch statements |
+| `Loop` | For, while, foreach loops |
+| `Block` | Generic code blocks (not control flow) |
+| `Expression` | Expressions |
+| `FunctionCall` | Function/method invocation site |
+| `Import` | Import statement |
+
+**Control Flow Node Metadata:**
+
+- **Loop nodes** contain:
+  - `condition` - ID of the loop condition expression
+  - `body` - ID of the loop body block
+  - `init` - (optional) ID of initialization expression (e.g., for loops)
+
+- **Conditional nodes** have `BRANCH` relationships to each branch with:
+  - `position` - Branch index (0 = if, 1 = first else-if, etc.)
+  - `condition` - ID of the condition expression for that branch
 
 **Relationship Types:**
 - `CONTAINS` - Hierarchical containment
@@ -295,6 +314,7 @@ make build-index REPO="repo1 repo2 repo3"
 - `DEFINES` - Variable definition
 - `INHERITS_FROM` - Class inheritance
 - `IMPLEMENTS` - Interface implementation
+- `BRANCH` - Conditional branch (from Conditional to branch block)
 
 ## API Reference
 
@@ -334,6 +354,7 @@ make build-index REPO="repo1 repo2 repo3"
 | `POST` | [`/codeapi/v1/field/accessors`](#get-field-accessors) | Get field accessors |
 | `POST` | [`/codeapi/v1/cypher`](#execute-cypher-query-read) | Execute read Cypher query |
 | `POST` | [`/codeapi/v1/cypher/write`](#execute-cypher-query-write) | Execute write Cypher query |
+| `POST` | [`/codeapi/v1/snippet`](#get-code-snippet) | Get code snippet by line range |
 | `GET` | [`/codeapi/v1/health`](#codeapi-health-check) | CodeAPI health check |
 | `POST` | [`/codeapi/v1/summaries/file`](#get-file-summaries) | Get all summaries for a file |
 | `POST` | [`/codeapi/v1/summaries/file/summary`](#get-file-level-summary) | Get file-level summary |
@@ -1272,6 +1293,63 @@ POST /codeapi/v1/cypher/write
   "nodes_affected": 3
 }
 ```
+
+---
+
+#### Get Code Snippet
+
+Fetch a code snippet from a file in a repository by specifying a line range.
+
+```
+POST /codeapi/v1/snippet
+```
+
+**Request:**
+```json
+{
+  "repo_name": "my-project",
+  "file_path": "src/main/java/App.java",
+  "start_line": 10,
+  "end_line": 25
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `repo_name` | string | Yes | Repository name (must be configured in source.yaml) |
+| `file_path` | string | Yes | Relative path to the file within the repository |
+| `start_line` | int | Yes | Starting line number (1-indexed, inclusive) |
+| `end_line` | int | Yes | Ending line number (1-indexed, inclusive) |
+
+**Response:**
+```json
+{
+  "repo_name": "my-project",
+  "file_path": "src/main/java/App.java",
+  "start_line": 10,
+  "end_line": 25,
+  "code": "public class App {\n    public static void main(String[] args) {\n        System.out.println(\"Hello\");\n    }\n}",
+  "total_lines": 16
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `repo_name` | string | Repository name |
+| `file_path` | string | Relative file path |
+| `start_line` | int | Requested start line |
+| `end_line` | int | Requested end line |
+| `code` | string | The extracted code snippet |
+| `total_lines` | int | Actual number of lines returned |
+
+**Error Responses:**
+
+- `400 Bad Request`: Invalid parameters (e.g., `start_line > end_line`, invalid file path)
+- `404 Not Found`: Repository not found or file not found
+
+**Security:**
+- File paths are validated to prevent path traversal attacks
+- Symlinks are resolved and validated to stay within repository bounds
 
 ---
 
