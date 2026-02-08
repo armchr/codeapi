@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
 
 	"github.com/armchr/codeapi/internal/chunk"
 	"github.com/armchr/codeapi/internal/config"
@@ -30,8 +29,6 @@ type CodeChunkService struct {
 	vectorDB            VectorDatabase
 	embedding           EmbeddingModel
 	logger              *zap.Logger
-	parser              *tree_sitter.Parser
-	parserMutex         sync.Mutex // Protects parser access (tree-sitter is not thread-safe)
 	minConditionalLines int
 	minLoopLines        int
 	gcThreshold         int64
@@ -44,7 +41,6 @@ func NewCodeChunkService(vectorDB VectorDatabase, embedding EmbeddingModel, minC
 		vectorDB:            vectorDB,
 		embedding:           embedding,
 		logger:              logger,
-		parser:              tree_sitter.NewParser(),
 		minConditionalLines: minConditionalLines,
 		minLoopLines:        minLoopLines,
 		gcThreshold:         gcThreshold,
@@ -534,17 +530,17 @@ func (ccs *CodeChunkService) parseAndChunk(ctx context.Context, filePath, langua
 		return nil, err
 	}
 
-	// Lock parser access (tree-sitter is not thread-safe)
-	ccs.parserMutex.Lock()
-	defer ccs.parserMutex.Unlock()
+	// Create an ephemeral parser (tree-sitter parsers are not thread-safe)
+	p := tree_sitter.NewParser()
+	defer p.Close()
 
 	// Set parser language
-	if err := ccs.parser.SetLanguage(tsLanguage); err != nil {
+	if err := p.SetLanguage(tsLanguage); err != nil {
 		return nil, fmt.Errorf("failed to set parser language: %w", err)
 	}
 
 	// Parse source code
-	tree := ccs.parser.Parse(sourceCode, nil)
+	tree := p.Parse(sourceCode, nil)
 	if tree == nil {
 		return nil, fmt.Errorf("failed to parse file")
 	}
